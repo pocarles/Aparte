@@ -11,3 +11,4 @@ All notable changes appear here. The project follows semantic versioning.
 - Normalized rich-text and HTML paste.
 - Markdown copy, export, autosave, and relaunch restoration.
 - Local-only operation with no external dependencies, accounts, cloud, analytics, or network code.
+- Packaged AppKit runtime acceptance for geometry, focus, overlays, persistence, dismissal, and repeated invocation reliability.

@@ -2,6 +2,25 @@
 
 Run this checklist against `dist/Aparte.app`. Record the date, macOS version, commit, and result before tagging V1.
 
+## Automated release-harness evidence
+
+On August 30, 2026, commit `da9657a` passed `make check` on macOS 26.5.2. The command built and ad-hoc signed the release app, then ran `dist/Aparte.app/Contents/MacOS/Aparte --runtime-acceptance` against temporary test data.
+
+The packaged AppKit runtime passed all 13 checks:
+
+- panel visible at 660 by 520 points;
+- editor owns first-responder focus;
+- panel level stays above the focus overlays;
+- one passive, translucent, non-blur overlay exists per connected display;
+- contextual formatting bar appears for a selection;
+- autosave completes without error;
+- the saved file is clean Markdown;
+- Markdown restores through a fresh document controller;
+- Escape dismisses the panel and removes the overlays;
+- twenty consecutive show/hide cycles leave no visible panel or retained overlay.
+
+This harness does not replace the manual checks below. A person still needs to judge the animation and typography, invoke Option-Space from another app, test rich paste through the live clipboard, and review both system appearances.
+
 ## Invocation and focus
 
 - [ ] Aparte appears in the menu bar and not the Dock.
@@ -38,4 +57,3 @@ Run this checklist against `dist/Aparte.app`. Record the date, macOS version, co
 - [ ] Idle resident memory is recorded in `docs/performance.md`.
 - [ ] Twenty consecutive invoke, type, dismiss cycles do not lose content, focus, or overlays.
 - [ ] The app remains responsive after display arrangement and appearance changes.
-
