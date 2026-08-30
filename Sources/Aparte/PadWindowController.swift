@@ -85,6 +85,12 @@ final class PadWindowController: NSObject, NSTextViewDelegate {
         updateFormattingBar()
     }
 
+    @objc private func clearPad() {
+        panel.makeFirstResponder(editor)
+        editor.clearAll(nil)
+        formattingBar.isHidden = true
+    }
+
     func runtimeSnapshot() -> RuntimeSnapshot {
         RuntimeSnapshot(
             size: panel.frame.size,
@@ -127,6 +133,15 @@ final class PadWindowController: NSObject, NSTextViewDelegate {
 
     func applyLinkForRuntimeCheck(_ url: URL, range: NSRange) {
         editor.applyLink(url, to: range)
+    }
+
+    func clearForRuntimeCheck() {
+        editor.undoManager?.removeAllActions()
+        editor.clearAll(nil)
+    }
+
+    func undoForRuntimeCheck() {
+        editor.undoManager?.undo()
     }
 
     func simulateEscapeForRuntimeCheck() {
@@ -207,6 +222,18 @@ final class PadWindowController: NSObject, NSTextViewDelegate {
         copyAllButton.setAccessibilityLabel("Copy all")
         rootView.addSubview(copyAllButton)
 
+        let clearButton = NSButton(title: "Clear", target: self, action: #selector(clearPad))
+        clearButton.translatesAutoresizingMaskIntoConstraints = false
+        clearButton.isBordered = false
+        clearButton.bezelStyle = .inline
+        clearButton.font = .systemFont(ofSize: 11, weight: .medium)
+        clearButton.contentTintColor = .secondaryLabelColor
+        clearButton.image = NSImage(systemSymbolName: "eraser", accessibilityDescription: nil)
+        clearButton.imagePosition = .imageLeading
+        clearButton.toolTip = "Clear the pad. Undo with Command-Z."
+        clearButton.setAccessibilityLabel("Clear pad")
+        rootView.addSubview(clearButton)
+
         let footer = NSTextField(labelWithString: "Esc closes  ·  ⇧⌘C copies Markdown")
         footer.translatesAutoresizingMaskIntoConstraints = false
         footer.font = .systemFont(ofSize: 11, weight: .medium)
@@ -223,6 +250,8 @@ final class PadWindowController: NSObject, NSTextViewDelegate {
             scrollView.bottomAnchor.constraint(equalTo: footer.topAnchor, constant: -8),
             copyAllButton.leadingAnchor.constraint(equalTo: rootView.leadingAnchor, constant: 16),
             copyAllButton.centerYAnchor.constraint(equalTo: footer.centerYAnchor),
+            clearButton.leadingAnchor.constraint(equalTo: copyAllButton.trailingAnchor, constant: 12),
+            clearButton.centerYAnchor.constraint(equalTo: copyAllButton.centerYAnchor),
             footer.trailingAnchor.constraint(equalTo: rootView.trailingAnchor, constant: -20),
             footer.bottomAnchor.constraint(equalTo: rootView.bottomAnchor, constant: -13),
         ])

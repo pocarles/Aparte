@@ -44,6 +44,16 @@ final class EditorTextView: NSTextView {
         NSPasteboard.general.setString(markdown, forType: .string)
     }
 
+    @objc func clearAll(_ sender: Any?) {
+        guard let textStorage, textStorage.length > 0 else { return }
+        let fullRange = NSRange(location: 0, length: textStorage.length)
+        guard shouldChangeText(in: fullRange, replacementString: "") else { return }
+        textStorage.replaceCharacters(in: fullRange, with: "")
+        setSelectedRange(NSRange(location: 0, length: 0))
+        typingAttributes = AparteTypography.baseAttributes
+        didChangeText()
+    }
+
     @objc func toggleBold(_ sender: Any?) {
         toggleFontTrait(.boldFontMask)
     }

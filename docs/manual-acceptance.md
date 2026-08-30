@@ -38,6 +38,7 @@ This harness does not replace the manual checks below. A person still needs to j
 - [ ] Link entry preserves the selected text, accepts a complete address or a bare domain, and returns focus to the editor.
 - [ ] The Link field prefills only when the clipboard contains one valid web address; ordinary clipboard text leaves it empty.
 - [ ] No permanent formatting toolbar remains when there is no selection.
+- [ ] Clear empties the pad, and one Command-Z restores the complete document with its formatting.
 
 ## Paste and Markdown
 

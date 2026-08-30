@@ -74,6 +74,15 @@ enum RuntimeAcceptance {
             drainRunLoop(for: 0.05)
             check(document.markdown == "[Link](https://example.com) target", "selected-text-link-applies")
 
+            let recoverableMarkdown = "# Recoverable\n\nClear this in one undoable edit."
+            pad.setMarkdownForRuntimeCheck(recoverableMarkdown)
+            pad.clearForRuntimeCheck()
+            drainRunLoop(for: 0.05)
+            check(document.markdown.isEmpty, "clear-empties-document")
+            pad.undoForRuntimeCheck()
+            drainRunLoop(for: 0.05)
+            check(document.markdown == recoverableMarkdown, "single-undo-restores-cleared-document")
+
             let longMarkdown = (1...120)
                 .map { "Paragraph \($0): enough text to exercise the native scroll view." }
                 .joined(separator: "\n\n")
