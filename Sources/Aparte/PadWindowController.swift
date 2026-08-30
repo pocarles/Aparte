@@ -3,6 +3,15 @@ import AparteCore
 
 @MainActor
 final class PadWindowController: NSObject, NSTextViewDelegate {
+    struct RuntimeSnapshot {
+        let size: NSSize
+        let isVisible: Bool
+        let isKey: Bool
+        let editorOwnsFocus: Bool
+        let formattingBarIsVisible: Bool
+        let level: NSWindow.Level
+    }
+
     private static let preferredSize = NSSize(width: 660, height: 520)
     private let document: DocumentController
     private let panel: ApartePanel
@@ -66,6 +75,44 @@ final class PadWindowController: NSObject, NSTextViewDelegate {
 
     func copyMarkdown() {
         editor.copyAsMarkdown(nil)
+    }
+
+    func runtimeSnapshot() -> RuntimeSnapshot {
+        RuntimeSnapshot(
+            size: panel.frame.size,
+            isVisible: panel.isVisible,
+            isKey: panel.isKeyWindow,
+            editorOwnsFocus: panel.firstResponder === editor,
+            formattingBarIsVisible: !formattingBar.isHidden,
+            level: panel.level
+        )
+    }
+
+    func setMarkdownForRuntimeCheck(_ markdown: String) {
+        let rendered = MarkdownCodec.render(markdown)
+        editor.textStorage?.setAttributedString(rendered)
+        document.textDidChange(rendered)
+    }
+
+    func selectForRuntimeCheck(_ range: NSRange) {
+        editor.setSelectedRange(range)
+        updateFormattingBar()
+    }
+
+    func simulateEscapeForRuntimeCheck() {
+        guard let event = NSEvent.keyEvent(
+            with: .keyDown,
+            location: .zero,
+            modifierFlags: [],
+            timestamp: 0,
+            windowNumber: panel.windowNumber,
+            context: nil,
+            characters: "\u{1b}",
+            charactersIgnoringModifiers: "\u{1b}",
+            isARepeat: false,
+            keyCode: 53
+        ) else { return }
+        editor.keyDown(with: event)
     }
 
     func textDidChange(_ notification: Notification) {
@@ -195,4 +242,3 @@ private final class PadBackgroundView: NSView {
         border.stroke()
     }
 }
-

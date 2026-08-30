@@ -23,6 +23,8 @@ make run
 
 The packaged app is written to `dist/Aparte.app` and ad-hoc signed for local use.
 
+`make check` also runs the packaged app's `--runtime-acceptance` mode. That mode exercises native panel geometry, first-responder focus, per-display overlays, the contextual formatting bar, Markdown persistence and restoration, Escape dismissal, and twenty show/hide cycles without touching the user's saved document.
+
 ## Keyboard shortcuts
 
 | Action | Shortcut |

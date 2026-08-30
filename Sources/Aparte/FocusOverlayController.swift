@@ -4,6 +4,12 @@ import AppKit
 final class FocusOverlayController {
     private var windows: [NSWindow] = []
 
+    var runtimeWindowCount: Int { windows.count }
+
+    var runtimeWindowsArePassive: Bool {
+        windows.allSatisfy { $0.ignoresMouseEvents && $0.level == .floating && !$0.isOpaque }
+    }
+
     func show() {
         hideImmediately()
         windows = NSScreen.screens.map(makeWindow)

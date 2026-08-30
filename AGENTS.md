@@ -10,7 +10,7 @@ Never add accounts, analytics, remote storage, network calls, persistent backgro
 
 - Build and package: `make package`
 - Run tests: `swift test`
-- Full local gate: `make check`
+- Full local gate: `make check` runs unit tests, release packaging, the packaged AppKit runtime acceptance harness, diff checks, and strict signature verification.
 - Run the app: `open dist/Aparte.app`
 - Stop only the packaged app: `pkill -x Aparte`
 
@@ -24,4 +24,3 @@ Never add accounts, analytics, remote storage, network calls, persistent backgro
 ## Required proof
 
 Run `make check`. For a release, complete `docs/manual-acceptance.md` on the packaged app and update measured CPU and memory in `docs/performance.md`.
-

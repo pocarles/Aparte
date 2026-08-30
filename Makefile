@@ -7,6 +7,7 @@ test:
 	swift test
 
 check: test package
+	dist/Aparte.app/Contents/MacOS/Aparte --runtime-acceptance
 	git diff --check
 	codesign --verify --deep --strict dist/Aparte.app
 
@@ -19,4 +20,3 @@ run: package
 clean:
 	swift package clean
 	rm -rf dist
-
