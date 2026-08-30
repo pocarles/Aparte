@@ -8,6 +8,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var padController: PadWindowController?
     private var hotKeyController: HotKeyController?
     private var menuBarController: MenuBarController?
+    private var escapeMonitor: Any?
     private let overlays = FocusOverlayController()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -38,11 +39,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             name: NSApplication.didChangeScreenParametersNotification,
             object: nil
         )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(applicationResignedActive),
+            name: NSApplication.didResignActiveNotification,
+            object: nil
+        )
+        escapeMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard event.keyCode == 53 else { return event }
+            let dismissed = MainActor.assumeIsolated {
+                guard self?.padController?.isVisible == true else { return false }
+                self?.hidePad()
+                return true
+            }
+            return dismissed ? nil : event
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
         documentController?.saveNow()
         hotKeyController?.invalidate()
+        if let escapeMonitor {
+            NSEvent.removeMonitor(escapeMonitor)
+        }
+        NotificationCenter.default.removeObserver(self)
     }
 
     @objc func togglePad() {
@@ -61,9 +81,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc func hidePad() {
-        documentController?.saveNow()
         padController?.hide()
         overlays.hide()
+        documentController?.saveNow()
         NSApp.hide(nil)
     }
 
@@ -91,6 +111,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard padController?.isVisible == true else { return }
         overlays.show()
         padController?.recenter()
+    }
+
+    @objc private func applicationResignedActive() {
+        guard padController?.isVisible == true else { return }
+        hidePad()
     }
 
     private func presentStartupError(_ error: Error) {

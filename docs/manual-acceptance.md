@@ -8,7 +8,7 @@ On August 30, 2026, commit `da9657a` passed `make check` on macOS 26.5.2. The co
 
 The packaged AppKit runtime passed all 13 checks:
 
-- panel visible at 660 by 520 points;
+- panel visible at 860 by 680 points;
 - editor owns first-responder focus;
 - panel level stays above the focus overlays;
 - one passive, translucent, non-blur overlay exists per connected display;
@@ -24,14 +24,15 @@ This harness does not replace the manual checks below. A person still needs to j
 ## Invocation and focus
 
 - [ ] Aparte appears in the menu bar and not the Dock.
-- [ ] Option-Space opens a centered pad near 660 by 520 points from another app.
+- [ ] Option-Space opens a centered pad near 860 by 680 points from another app.
 - [ ] The editor receives keyboard focus without an extra click.
 - [ ] Each connected display dims subtly without blur or an opaque flash.
-- [ ] Option-Space and Escape dismiss the pad and remove every dimming window.
+- [ ] Option-Space, Escape, and clicking outside dismiss the pad and remove every dimming window.
 
 ## Editing and formatting
 
 - [ ] Plain typing, selection, undo, redo, find, spelling, and keyboard navigation behave like a macOS text editor.
+- [ ] A long document scrolls smoothly with a wheel, trackpad, scrollbar, and keyboard navigation.
 - [ ] The selection bar appears only for a non-empty selection.
 - [ ] Bold, italic, underline, headings, unordered lists, ordered lists, and links work.
 - [ ] No permanent formatting toolbar remains when there is no selection.
@@ -42,6 +43,7 @@ This harness does not replace the manual checks below. A person still needs to j
 - [ ] Pasted fonts, sizes, colors, and spacing normalize to Aparte's typography.
 - [ ] Pasting plain text stays plain.
 - [ ] Copy as Markdown produces clean Markdown for the selected text or full document.
+- [ ] Copy all selects the full document and places its normal rich and plain representations on the clipboard.
 - [ ] Save Markdown As writes a readable `.md` file.
 
 ## Persistence and appearance

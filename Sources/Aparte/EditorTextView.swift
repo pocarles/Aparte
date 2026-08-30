@@ -6,6 +6,18 @@ final class EditorTextView: NSTextView {
     var onDismiss: (() -> Void)?
     var onSelectionChanged: (() -> Void)?
 
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        guard string.isEmpty else { return }
+        NSString(string: "Type or paste here...").draw(
+            at: NSPoint(x: textContainerInset.width, y: textContainerInset.height),
+            withAttributes: [
+                .font: AparteTypography.bodyFont,
+                .foregroundColor: NSColor.placeholderTextColor,
+            ]
+        )
+    }
+
     override func keyDown(with event: NSEvent) {
         if event.keyCode == 53 {
             onDismiss?()

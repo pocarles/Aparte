@@ -39,7 +39,7 @@ enum RuntimeAcceptance {
 
             let initial = pad.runtimeSnapshot()
             check(initial.isVisible, "panel-visible")
-            check(abs(initial.size.width - 660) < 1 && abs(initial.size.height - 520) < 1, "panel-660x520")
+            check(abs(initial.size.width - 860) < 1 && abs(initial.size.height - 680) < 1, "panel-860x680")
             check(initial.editorOwnsFocus, "editor-first-responder")
             check(initial.level == .popUpMenu, "panel-above-overlays")
             check(overlays.runtimeWindowCount == NSScreen.screens.count, "overlay-per-screen")
@@ -63,6 +63,14 @@ enum RuntimeAcceptance {
 
             let restored = try DocumentController(store: store)
             check(restored.markdown == markdown, "markdown-restored-on-relaunch")
+
+            let longMarkdown = (1...120)
+                .map { "Paragraph \($0): enough text to exercise the native scroll view." }
+                .joined(separator: "\n\n")
+            pad.setMarkdownForRuntimeCheck(longMarkdown)
+            drainRunLoop(for: 0.1)
+            check(pad.runtimeSnapshot().editorCanScroll, "long-document-is-scrollable")
+            check(pad.scrollToEndForRuntimeCheck(), "long-document-scrolls-to-end")
 
             pad.simulateEscapeForRuntimeCheck()
             drainRunLoop(for: 0.2)

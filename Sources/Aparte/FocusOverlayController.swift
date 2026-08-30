@@ -2,6 +2,7 @@ import AppKit
 
 @MainActor
 final class FocusOverlayController {
+    private static let dimmingAlpha: CGFloat = 0.30
     private var windows: [NSWindow] = []
 
     var runtimeWindowCount: Int { windows.count }
@@ -51,7 +52,7 @@ final class FocusOverlayController {
             defer: false,
             screen: screen
         )
-        window.backgroundColor = NSColor.black.withAlphaComponent(0.16)
+        window.backgroundColor = NSColor.black.withAlphaComponent(Self.dimmingAlpha)
         window.isOpaque = false
         window.hasShadow = false
         window.ignoresMouseEvents = true

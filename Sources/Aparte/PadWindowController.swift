@@ -9,10 +9,11 @@ final class PadWindowController: NSObject, NSTextViewDelegate {
         let isKey: Bool
         let editorOwnsFocus: Bool
         let formattingBarIsVisible: Bool
+        let editorCanScroll: Bool
         let level: NSWindow.Level
     }
 
-    private static let preferredSize = NSSize(width: 660, height: 520)
+    private static let preferredSize = NSSize(width: 860, height: 680)
     private let document: DocumentController
     private let panel: ApartePanel
     private let editor: EditorTextView
@@ -77,6 +78,13 @@ final class PadWindowController: NSObject, NSTextViewDelegate {
         editor.copyAsMarkdown(nil)
     }
 
+    @objc private func copyAll() {
+        panel.makeFirstResponder(editor)
+        editor.selectAll(nil)
+        editor.copy(nil)
+        updateFormattingBar()
+    }
+
     func runtimeSnapshot() -> RuntimeSnapshot {
         RuntimeSnapshot(
             size: panel.frame.size,
@@ -84,6 +92,7 @@ final class PadWindowController: NSObject, NSTextViewDelegate {
             isKey: panel.isKeyWindow,
             editorOwnsFocus: panel.firstResponder === editor,
             formattingBarIsVisible: !formattingBar.isHidden,
+            editorCanScroll: editorCanScroll,
             level: panel.level
         )
     }
@@ -97,6 +106,13 @@ final class PadWindowController: NSObject, NSTextViewDelegate {
     func selectForRuntimeCheck(_ range: NSRange) {
         editor.setSelectedRange(range)
         updateFormattingBar()
+    }
+
+    func scrollToEndForRuntimeCheck() -> Bool {
+        guard let scrollView = editor.enclosingScrollView else { return false }
+        editor.scrollToEndOfDocument(nil)
+        scrollView.contentView.layoutSubtreeIfNeeded()
+        return scrollView.contentView.bounds.origin.y > 0
     }
 
     func simulateEscapeForRuntimeCheck() {
@@ -147,7 +163,7 @@ final class PadWindowController: NSObject, NSTextViewDelegate {
         editor.isAutomaticSpellingCorrectionEnabled = true
         editor.isContinuousSpellCheckingEnabled = true
         editor.drawsBackground = false
-        editor.textContainerInset = NSSize(width: 38, height: 34)
+        editor.textContainerInset = NSSize(width: 82, height: 62)
         editor.textContainer?.widthTracksTextView = true
         editor.textContainer?.lineFragmentPadding = 0
         editor.typingAttributes = AparteTypography.baseAttributes
@@ -163,12 +179,21 @@ final class PadWindowController: NSObject, NSTextViewDelegate {
         scrollView.drawsBackground = false
         scrollView.hasVerticalScroller = true
         scrollView.autohidesScrollers = true
-        scrollView.documentView = editor
-
-        editor.translatesAutoresizingMaskIntoConstraints = false
         rootView.addSubview(scrollView)
 
-        let footer = NSTextField(labelWithString: "Markdown · local")
+        let copyAllButton = NSButton(title: "Copy all", target: self, action: #selector(copyAll))
+        copyAllButton.translatesAutoresizingMaskIntoConstraints = false
+        copyAllButton.isBordered = false
+        copyAllButton.bezelStyle = .inline
+        copyAllButton.font = .systemFont(ofSize: 11, weight: .medium)
+        copyAllButton.contentTintColor = .secondaryLabelColor
+        copyAllButton.image = NSImage(systemSymbolName: "doc.on.doc", accessibilityDescription: nil)
+        copyAllButton.imagePosition = .imageLeading
+        copyAllButton.toolTip = "Select everything and copy"
+        copyAllButton.setAccessibilityLabel("Copy all")
+        rootView.addSubview(copyAllButton)
+
+        let footer = NSTextField(labelWithString: "Esc closes  ·  ⇧⌘C copies Markdown")
         footer.translatesAutoresizingMaskIntoConstraints = false
         footer.font = .systemFont(ofSize: 11, weight: .medium)
         footer.textColor = .tertiaryLabelColor
@@ -182,11 +207,34 @@ final class PadWindowController: NSObject, NSTextViewDelegate {
             scrollView.trailingAnchor.constraint(equalTo: rootView.trailingAnchor),
             scrollView.topAnchor.constraint(equalTo: rootView.topAnchor),
             scrollView.bottomAnchor.constraint(equalTo: footer.topAnchor, constant: -8),
-            editor.widthAnchor.constraint(equalTo: scrollView.contentView.widthAnchor),
-            editor.heightAnchor.constraint(greaterThanOrEqualTo: scrollView.contentView.heightAnchor),
+            copyAllButton.leadingAnchor.constraint(equalTo: rootView.leadingAnchor, constant: 16),
+            copyAllButton.centerYAnchor.constraint(equalTo: footer.centerYAnchor),
             footer.trailingAnchor.constraint(equalTo: rootView.trailingAnchor, constant: -20),
             footer.bottomAnchor.constraint(equalTo: rootView.bottomAnchor, constant: -13),
         ])
+
+        rootView.layoutSubtreeIfNeeded()
+        let visibleSize = scrollView.contentSize
+        editor.frame = NSRect(origin: .zero, size: visibleSize)
+        editor.minSize = NSSize(width: 0, height: visibleSize.height)
+        editor.maxSize = NSSize(
+            width: CGFloat.greatestFiniteMagnitude,
+            height: CGFloat.greatestFiniteMagnitude
+        )
+        editor.isVerticallyResizable = true
+        editor.isHorizontallyResizable = false
+        editor.autoresizingMask = [.width]
+        editor.textContainer?.containerSize = NSSize(
+            width: visibleSize.width,
+            height: CGFloat.greatestFiniteMagnitude
+        )
+        editor.textContainer?.widthTracksTextView = true
+        scrollView.documentView = editor
+    }
+
+    private var editorCanScroll: Bool {
+        guard let scrollView = editor.enclosingScrollView else { return false }
+        return editor.frame.height > scrollView.contentView.bounds.height + 1
     }
 
     private func updateFormattingBar() {
