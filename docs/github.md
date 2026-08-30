@@ -1,25 +1,21 @@
 # GitHub status
 
-Private repository creation is currently blocked.
+The private GitHub repository is live at <https://github.com/pocarles/Aparte>.
 
-On August 29, 2026, `gh auth status` found the active `pocarles` account but reported that the stored GitHub token is invalid. No GitHub repository or remote was created, and no push was attempted.
+Verified August 30, 2026:
 
-Required user action:
+- repository: `pocarles/Aparte`;
+- visibility: private;
+- default branch: `main`;
+- local remote: `git@github.com:pocarles/Aparte.git`;
+- pushed history: every milestone commit on `main`.
 
-```sh
-gh auth refresh -h github.com
-```
-
-After authentication succeeds, create and push the private repository from this project directory:
-
-```sh
-gh repo create Aparte --private --source=. --remote=origin --push
-```
-
-Verify privacy and the pushed branch before calling the remote milestone complete:
+Verification commands:
 
 ```sh
-gh repo view --json nameWithOwner,isPrivate,defaultBranchRef,url
+gh repo view pocarles/Aparte --json nameWithOwner,isPrivate,defaultBranchRef,url,visibility
 git status -sb
+git log --oneline --decorate --max-count=8
 ```
 
+Do not change visibility, enable publication automation, or create a release without a separate release decision.
