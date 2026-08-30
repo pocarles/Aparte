@@ -95,13 +95,15 @@ final class EditorTextView: NSTextView {
         didChangeText()
     }
 
-    func applyLink(_ url: URL) {
-        let range = selectedRange()
+    func applyLink(_ url: URL, to range: NSRange? = nil) {
+        let range = range ?? selectedRange()
         guard range.length > 0, let textStorage else { return }
+        guard NSMaxRange(range) <= textStorage.length else { return }
         textStorage.addAttributes(
             [.link: url, .foregroundColor: NSColor.linkColor, .underlineStyle: NSUnderlineStyle.single.rawValue],
             range: range
         )
+        setSelectedRange(range)
         didChangeText()
     }
 

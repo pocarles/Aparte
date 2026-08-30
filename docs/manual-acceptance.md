@@ -35,6 +35,8 @@ This harness does not replace the manual checks below. A person still needs to j
 - [ ] A long document scrolls smoothly with a wheel, trackpad, scrollbar, and keyboard navigation.
 - [ ] The selection bar appears only for a non-empty selection.
 - [ ] Bold, italic, underline, headings, unordered lists, ordered lists, and links work.
+- [ ] Link entry preserves the selected text, accepts a complete address or a bare domain, and returns focus to the editor.
+- [ ] The Link field prefills only when the clipboard contains one valid web address; ordinary clipboard text leaves it empty.
 - [ ] No permanent formatting toolbar remains when there is no selection.
 
 ## Paste and Markdown

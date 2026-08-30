@@ -125,6 +125,10 @@ final class PadWindowController: NSObject, NSTextViewDelegate {
         return scrollView.contentView.bounds.origin.y > 0
     }
 
+    func applyLinkForRuntimeCheck(_ url: URL, range: NSRange) {
+        editor.applyLink(url, to: range)
+    }
+
     func simulateEscapeForRuntimeCheck() {
         guard let event = NSEvent.keyEvent(
             with: .keyDown,

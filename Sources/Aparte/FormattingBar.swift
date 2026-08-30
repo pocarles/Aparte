@@ -2,8 +2,16 @@ import AppKit
 import AparteCore
 
 @MainActor
-final class FormattingBar: NSVisualEffectView {
+final class FormattingBar: NSVisualEffectView, NSPopoverDelegate {
+    private weak var editor: EditorTextView?
+    private weak var linkButton: NSButton?
+    private weak var linkField: NSTextField?
+    private weak var linkError: NSTextField?
+    private var linkSelection: NSRange?
+    private var linkPopover: NSPopover?
+
     init(editor: EditorTextView) {
+        self.editor = editor
         super.init(frame: NSRect(x: 0, y: 0, width: 286, height: 38))
         material = .menu
         blendingMode = .withinWindow
@@ -37,7 +45,9 @@ final class FormattingBar: NSVisualEffectView {
         stack.addArrangedSubview(button("•", help: "Bulleted list") { editor.applyList(.unordered) })
         stack.addArrangedSubview(button("1.", help: "Numbered list") { editor.applyList(.ordered) })
         stack.addArrangedSubview(separator())
-        stack.addArrangedSubview(button("Link", help: "Add link") { [weak self] in self?.promptForLink(editor: editor) })
+        let link = button("Link", help: "Add link") { [weak self] in self?.showLinkPopover() }
+        linkButton = link
+        stack.addArrangedSubview(link)
 
         NSLayoutConstraint.activate([
             stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 6),
@@ -68,19 +78,105 @@ final class FormattingBar: NSVisualEffectView {
         return box
     }
 
-    private func promptForLink(editor: EditorTextView) {
-        guard editor.selectedRange().length > 0 else { return }
-        let alert = NSAlert()
-        alert.messageText = "Add link"
-        alert.informativeText = "Enter a complete web address."
-        alert.addButton(withTitle: "Add")
-        alert.addButton(withTitle: "Cancel")
-        let field = NSTextField(string: "https://")
-        field.frame = NSRect(x: 0, y: 0, width: 320, height: 24)
-        alert.accessoryView = field
-        if alert.runModal() == .alertFirstButtonReturn, let url = URL(string: field.stringValue) {
-            editor.applyLink(url)
+    private func showLinkPopover() {
+        guard let editor, let linkButton else { return }
+        let selection = editor.selectedRange()
+        guard selection.length > 0 else { return }
+
+        linkPopover?.performClose(nil)
+        linkSelection = selection
+
+        let content = NSView(frame: NSRect(x: 0, y: 0, width: 300, height: 94))
+        let field = NSTextField(string: clipboardLinkSuggestion() ?? "")
+        field.translatesAutoresizingMaskIntoConstraints = false
+        field.placeholderString = "example.com"
+        field.setAccessibilityLabel("Web address")
+        content.addSubview(field)
+        linkField = field
+
+        let error = NSTextField(labelWithString: "")
+        error.translatesAutoresizingMaskIntoConstraints = false
+        error.font = .systemFont(ofSize: 11)
+        error.textColor = .systemRed
+        error.isHidden = true
+        content.addSubview(error)
+        linkError = error
+
+        let cancel = ClosureButton(title: "Cancel") { [weak self] in self?.closeLinkPopover() }
+        cancel.translatesAutoresizingMaskIntoConstraints = false
+        cancel.bezelStyle = .rounded
+        content.addSubview(cancel)
+
+        let add = ClosureButton(title: "Add") { [weak self] in self?.applyPendingLink() }
+        add.translatesAutoresizingMaskIntoConstraints = false
+        add.bezelStyle = .rounded
+        add.keyEquivalent = "\r"
+        content.addSubview(add)
+
+        NSLayoutConstraint.activate([
+            field.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 12),
+            field.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -12),
+            field.topAnchor.constraint(equalTo: content.topAnchor, constant: 12),
+            error.leadingAnchor.constraint(equalTo: field.leadingAnchor),
+            error.centerYAnchor.constraint(equalTo: cancel.centerYAnchor),
+            cancel.trailingAnchor.constraint(equalTo: add.leadingAnchor, constant: -8),
+            cancel.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -10),
+            add.trailingAnchor.constraint(equalTo: field.trailingAnchor),
+            add.bottomAnchor.constraint(equalTo: cancel.bottomAnchor),
+        ])
+
+        let controller = NSViewController()
+        controller.view = content
+        let popover = NSPopover()
+        popover.behavior = .transient
+        popover.contentSize = content.frame.size
+        popover.contentViewController = controller
+        popover.delegate = self
+        linkPopover = popover
+        popover.show(relativeTo: linkButton.bounds, of: linkButton, preferredEdge: .maxY)
+        linkButton.window?.makeFirstResponder(field)
+        field.selectText(nil)
+    }
+
+    private func applyPendingLink() {
+        guard
+            let editor,
+            let linkSelection,
+            let field = linkField,
+            let url = LinkURLNormalizer.normalize(field.stringValue)
+        else {
+            linkError?.stringValue = "Enter a valid web address."
+            linkError?.isHidden = false
+            NSSound.beep()
+            return
         }
+
+        editor.applyLink(url, to: linkSelection)
+        closeLinkPopover()
+        editor.window?.makeFirstResponder(editor)
+    }
+
+    private func closeLinkPopover() {
+        linkPopover?.performClose(nil)
+        linkPopover = nil
+        linkSelection = nil
+    }
+
+    private func clipboardLinkSuggestion() -> String? {
+        let pasteboard = NSPasteboard.general
+        for type in [NSPasteboard.PasteboardType.URL, .string] {
+            guard let value = pasteboard.string(forType: type) else { continue }
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            if LinkURLNormalizer.normalize(trimmed) != nil {
+                return trimmed
+            }
+        }
+        return nil
+    }
+
+    func popoverDidClose(_ notification: Notification) {
+        linkPopover = nil
+        linkSelection = nil
     }
 }
 
@@ -101,4 +197,3 @@ private final class ClosureButton: NSButton {
 
     @objc private func runAction() { closure() }
 }
-

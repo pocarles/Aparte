@@ -39,6 +39,8 @@ The editor displays a normalized attributed string. Markdown remains the saved a
 
 Supported V1 meaning is bold, italic, underline through `<u>`, headings, ordered and unordered lists, and links. Underline uses explicit HTML because CommonMark has no underline syntax.
 
+The Link popover reads the clipboard only when the user opens it. It prefills only when the clipboard contains one valid HTTP or HTTPS address. Aparte does not monitor clipboard changes in the background.
+
 ## UI structure
 
 `EditorTextView` is a native rich `NSTextView` with macOS undo, spelling, selection, keyboard navigation, and text input behavior. A small contextual formatting bar appears only when the selection is non-empty. It changes the selected attributed ranges and then the document controller schedules a save.

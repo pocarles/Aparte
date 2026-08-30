@@ -69,6 +69,11 @@ enum RuntimeAcceptance {
             let restored = try DocumentController(store: store)
             check(restored.markdown == markdown, "markdown-restored-on-relaunch")
 
+            pad.setMarkdownForRuntimeCheck("Link target")
+            pad.applyLinkForRuntimeCheck(URL(string: "https://example.com")!, range: NSRange(location: 0, length: 4))
+            drainRunLoop(for: 0.05)
+            check(document.markdown == "[Link](https://example.com) target", "selected-text-link-applies")
+
             let longMarkdown = (1...120)
                 .map { "Paragraph \($0): enough text to exercise the native scroll view." }
                 .joined(separator: "\n\n")
