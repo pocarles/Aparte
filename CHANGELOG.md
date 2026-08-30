@@ -4,5 +4,10 @@ All notable changes appear here. The project follows semantic versioning.
 
 ## 1.0.0 - Unreleased
 
-- Initial native macOS menu bar writing pad.
-
+- Native menu bar app with an Option-Space global hotkey.
+- Floating 660 by 520 point writing pad and lightweight multi-display focus dimming.
+- Native rich text editing for bold, italic, underline, headings, lists, and links.
+- Selection-only contextual formatting bar.
+- Normalized rich-text and HTML paste.
+- Markdown copy, export, autosave, and relaunch restoration.
+- Local-only operation with no external dependencies, accounts, cloud, analytics, or network code.

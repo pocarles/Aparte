@@ -34,5 +34,23 @@ final class PasteNormalizerTests: XCTestCase {
         XCTAssertEqual(font?.pointSize, AparteTypography.bodySize)
         XCTAssertEqual(font?.familyName, AparteTypography.bodyFont.familyName)
     }
-}
 
+    func testRTFPasteboardInputPreservesBoldMeaning() throws {
+        let pasteboard = NSPasteboard.withUniqueName()
+        defer { pasteboard.releaseGlobally() }
+        let boldFont = NSFontManager.shared.convert(AparteTypography.bodyFont, toHaveTrait: .boldFontMask)
+        let source = NSAttributedString(string: "Bold", attributes: [.font: boldFont])
+        let data = try source.data(
+            from: NSRange(location: 0, length: source.length),
+            documentAttributes: [.documentType: NSAttributedString.DocumentType.rtf]
+        )
+        pasteboard.declareTypes([.rtf], owner: nil)
+        pasteboard.setData(data, forType: .rtf)
+
+        let result = try XCTUnwrap(PasteNormalizer.read(from: pasteboard))
+        let font = try XCTUnwrap(result.attribute(.font, at: 0, effectiveRange: nil) as? NSFont)
+
+        XCTAssertTrue(NSFontManager.shared.traits(of: font).contains(.boldFontMask))
+        XCTAssertEqual(font.pointSize, AparteTypography.bodySize)
+    }
+}

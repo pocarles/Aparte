@@ -35,9 +35,8 @@ The packaged app is written to `dist/Aparte.app` and ad-hoc signed for local use
 | Copy as Markdown | Command-Shift-C |
 | Save Markdown As | Command-Shift-S |
 
-See [docs/architecture.md](docs/architecture.md), [docs/manual-acceptance.md](docs/manual-acceptance.md), and [docs/performance.md](docs/performance.md) for V1 design and proof.
+See [docs/architecture.md](docs/architecture.md), [docs/manual-acceptance.md](docs/manual-acceptance.md), [docs/performance.md](docs/performance.md), and [docs/github.md](docs/github.md) for V1 design and proof.
 
 ## License
 
 Aparte is available under the MIT License. Third-party research and notices are recorded in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
-
