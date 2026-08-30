@@ -282,12 +282,6 @@ final class PadWindowController: NSObject, NSTextViewDelegate {
         clearButton.setAccessibilityLabel("Clear pad")
         rootView.addSubview(clearButton)
 
-        let footer = NSTextField(labelWithString: "Esc closes  ·  ⇧⌘C copies Markdown")
-        footer.translatesAutoresizingMaskIntoConstraints = false
-        footer.font = .systemFont(ofSize: 11, weight: .medium)
-        footer.textColor = .tertiaryLabelColor
-        rootView.addSubview(footer)
-
         formattingBar.isHidden = true
         rootView.addSubview(formattingBar)
 
@@ -295,15 +289,13 @@ final class PadWindowController: NSObject, NSTextViewDelegate {
             scrollView.leadingAnchor.constraint(equalTo: rootView.leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: rootView.trailingAnchor),
             scrollView.topAnchor.constraint(equalTo: rootView.topAnchor),
-            scrollView.bottomAnchor.constraint(equalTo: footer.topAnchor, constant: -8),
+            scrollView.bottomAnchor.constraint(equalTo: copyAllButton.topAnchor, constant: -8),
             copyAllButton.leadingAnchor.constraint(equalTo: rootView.leadingAnchor, constant: 16),
-            copyAllButton.centerYAnchor.constraint(equalTo: footer.centerYAnchor),
+            copyAllButton.bottomAnchor.constraint(equalTo: rootView.bottomAnchor, constant: -8),
             desktopSaveButton.leadingAnchor.constraint(equalTo: copyAllButton.trailingAnchor, constant: 12),
             desktopSaveButton.centerYAnchor.constraint(equalTo: copyAllButton.centerYAnchor),
             clearButton.leadingAnchor.constraint(equalTo: desktopSaveButton.trailingAnchor, constant: 12),
             clearButton.centerYAnchor.constraint(equalTo: desktopSaveButton.centerYAnchor),
-            footer.trailingAnchor.constraint(equalTo: rootView.trailingAnchor, constant: -20),
-            footer.bottomAnchor.constraint(equalTo: rootView.bottomAnchor, constant: -13),
         ])
 
         rootView.layoutSubtreeIfNeeded()
