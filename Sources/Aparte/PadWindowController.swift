@@ -121,7 +121,7 @@ final class PadWindowController: NSObject, NSTextViewDelegate {
     }
 
     private func resetDesktopSaveButton() {
-        desktopSaveButton?.title = "Save .md"
+        desktopSaveButton?.title = "Save"
         desktopSaveButton?.image = NSImage(systemSymbolName: "arrow.down.doc", accessibilityDescription: nil)
         desktopSaveButton?.toolTip = "Save a new Markdown file to the Desktop"
     }
@@ -245,7 +245,7 @@ final class PadWindowController: NSObject, NSTextViewDelegate {
         scrollView.autohidesScrollers = true
         rootView.addSubview(scrollView)
 
-        let copyAllButton = NSButton(title: "Copy all", target: self, action: #selector(copyAll))
+        let copyAllButton = NSButton(title: "Copy", target: self, action: #selector(copyAll))
         copyAllButton.translatesAutoresizingMaskIntoConstraints = false
         copyAllButton.isBordered = false
         copyAllButton.bezelStyle = .inline
@@ -253,9 +253,22 @@ final class PadWindowController: NSObject, NSTextViewDelegate {
         copyAllButton.contentTintColor = .secondaryLabelColor
         copyAllButton.image = NSImage(systemSymbolName: "doc.on.doc", accessibilityDescription: nil)
         copyAllButton.imagePosition = .imageLeading
-        copyAllButton.toolTip = "Select everything and copy"
+        copyAllButton.toolTip = "Select all text and copy it"
         copyAllButton.setAccessibilityLabel("Copy all")
         rootView.addSubview(copyAllButton)
+
+        let desktopSaveButton = NSButton(title: "Save", target: self, action: #selector(saveMarkdownToDesktop))
+        desktopSaveButton.translatesAutoresizingMaskIntoConstraints = false
+        desktopSaveButton.isBordered = false
+        desktopSaveButton.bezelStyle = .inline
+        desktopSaveButton.font = .systemFont(ofSize: 11, weight: .medium)
+        desktopSaveButton.contentTintColor = .secondaryLabelColor
+        desktopSaveButton.image = NSImage(systemSymbolName: "arrow.down.doc", accessibilityDescription: nil)
+        desktopSaveButton.imagePosition = .imageLeading
+        desktopSaveButton.toolTip = "Save a new Markdown file to the Desktop"
+        desktopSaveButton.setAccessibilityLabel("Save Markdown to Desktop")
+        rootView.addSubview(desktopSaveButton)
+        self.desktopSaveButton = desktopSaveButton
 
         let clearButton = NSButton(title: "Clear", target: self, action: #selector(clearPad))
         clearButton.translatesAutoresizingMaskIntoConstraints = false
@@ -268,19 +281,6 @@ final class PadWindowController: NSObject, NSTextViewDelegate {
         clearButton.toolTip = "Clear the pad. Undo with Command-Z."
         clearButton.setAccessibilityLabel("Clear pad")
         rootView.addSubview(clearButton)
-
-        let desktopSaveButton = NSButton(title: "Save .md", target: self, action: #selector(saveMarkdownToDesktop))
-        desktopSaveButton.translatesAutoresizingMaskIntoConstraints = false
-        desktopSaveButton.isBordered = false
-        desktopSaveButton.bezelStyle = .inline
-        desktopSaveButton.font = .systemFont(ofSize: 11, weight: .medium)
-        desktopSaveButton.contentTintColor = .secondaryLabelColor
-        desktopSaveButton.image = NSImage(systemSymbolName: "arrow.down.doc", accessibilityDescription: nil)
-        desktopSaveButton.imagePosition = .imageLeading
-        desktopSaveButton.toolTip = "Save a new Markdown file to the Desktop"
-        desktopSaveButton.setAccessibilityLabel("Save Markdown to Desktop")
-        rootView.addSubview(desktopSaveButton)
-        self.desktopSaveButton = desktopSaveButton
 
         let footer = NSTextField(labelWithString: "Esc closes  ·  ⇧⌘C copies Markdown")
         footer.translatesAutoresizingMaskIntoConstraints = false
@@ -298,10 +298,10 @@ final class PadWindowController: NSObject, NSTextViewDelegate {
             scrollView.bottomAnchor.constraint(equalTo: footer.topAnchor, constant: -8),
             copyAllButton.leadingAnchor.constraint(equalTo: rootView.leadingAnchor, constant: 16),
             copyAllButton.centerYAnchor.constraint(equalTo: footer.centerYAnchor),
-            clearButton.leadingAnchor.constraint(equalTo: copyAllButton.trailingAnchor, constant: 12),
-            clearButton.centerYAnchor.constraint(equalTo: copyAllButton.centerYAnchor),
-            desktopSaveButton.leadingAnchor.constraint(equalTo: clearButton.trailingAnchor, constant: 12),
-            desktopSaveButton.centerYAnchor.constraint(equalTo: clearButton.centerYAnchor),
+            desktopSaveButton.leadingAnchor.constraint(equalTo: copyAllButton.trailingAnchor, constant: 12),
+            desktopSaveButton.centerYAnchor.constraint(equalTo: copyAllButton.centerYAnchor),
+            clearButton.leadingAnchor.constraint(equalTo: desktopSaveButton.trailingAnchor, constant: 12),
+            clearButton.centerYAnchor.constraint(equalTo: desktopSaveButton.centerYAnchor),
             footer.trailingAnchor.constraint(equalTo: rootView.trailingAnchor, constant: -20),
             footer.bottomAnchor.constraint(equalTo: rootView.bottomAnchor, constant: -13),
         ])

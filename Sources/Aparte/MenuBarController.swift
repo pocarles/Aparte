@@ -20,7 +20,7 @@ final class MenuBarController: NSObject {
         if let button = statusItem.button {
             button.image = NSImage(systemSymbolName: "text.cursor", accessibilityDescription: "Aparte")
             button.image?.isTemplate = true
-            button.toolTip = "Aparte · Option-Space"
+            button.toolTip = "Open or close Aparte · Option-Space"
             button.target = self
             button.action = #selector(clicked)
             button.sendAction(on: [.leftMouseUp, .rightMouseUp])
@@ -54,4 +54,3 @@ final class MenuBarController: NSObject {
     @objc private func copyFromMenu() { copyMarkdown() }
     @objc private func saveFromMenu() { saveMarkdown() }
 }
-

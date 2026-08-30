@@ -105,12 +105,14 @@ final class FormattingBar: NSVisualEffectView, NSPopoverDelegate {
         let cancel = ClosureButton(title: "Cancel") { [weak self] in self?.closeLinkPopover() }
         cancel.translatesAutoresizingMaskIntoConstraints = false
         cancel.bezelStyle = .rounded
+        cancel.toolTip = "Close without adding a link"
         content.addSubview(cancel)
 
         let add = ClosureButton(title: "Add") { [weak self] in self?.applyPendingLink() }
         add.translatesAutoresizingMaskIntoConstraints = false
         add.bezelStyle = .rounded
         add.keyEquivalent = "\r"
+        add.toolTip = "Add the link to the selected text"
         content.addSubview(add)
 
         NSLayoutConstraint.activate([
