@@ -48,6 +48,7 @@ This harness does not replace the manual checks below. A person still needs to j
 - [ ] Copy as Markdown produces clean Markdown for the selected text or full document.
 - [ ] Copy all selects the full document and places its normal rich and plain representations on the clipboard.
 - [ ] Save Markdown As writes a readable `.md` file.
+- [ ] Save .md creates a readable Markdown file on the Desktop and adds a number instead of overwriting an existing file.
 
 ## Persistence and appearance
 

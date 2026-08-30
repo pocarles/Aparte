@@ -41,6 +41,8 @@ Supported V1 meaning is bold, italic, underline through `<u>`, headings, ordered
 
 The Link popover reads the clipboard only when the user opens it. It prefills only when the clipboard contains one valid HTTP or HTTPS address. Aparte does not monitor clipboard changes in the background.
 
+The lower Save .md action writes a new file to the user's Desktop. It derives the filename from the first non-empty line, limits it to 80 characters, and adds a numeric suffix rather than overwriting an existing file. Save Markdown As remains available when the user wants another location.
+
 ## UI structure
 
 `EditorTextView` is a native rich `NSTextView` with macOS undo, spelling, selection, keyboard navigation, and text input behavior. A small contextual formatting bar appears only when the selection is non-empty. It changes the selected attributed ranges and then the document controller schedules a save.

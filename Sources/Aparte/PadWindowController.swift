@@ -19,6 +19,7 @@ final class PadWindowController: NSObject, NSTextViewDelegate {
     private let editor: EditorTextView
     private let rootView: PadBackgroundView
     private let formattingBar: FormattingBar
+    private weak var desktopSaveButton: NSButton?
     var onDismiss: (() -> Void)?
 
     var isVisible: Bool { panel.isVisible }
@@ -41,6 +42,7 @@ final class PadWindowController: NSObject, NSTextViewDelegate {
     }
 
     func show() {
+        resetDesktopSaveButton()
         recenter()
         panel.alphaValue = 0
         panel.makeKeyAndOrderFront(nil)
@@ -89,6 +91,39 @@ final class PadWindowController: NSObject, NSTextViewDelegate {
         panel.makeFirstResponder(editor)
         editor.clearAll(nil)
         formattingBar.isHidden = true
+    }
+
+    @objc private func saveMarkdownToDesktop() {
+        guard !document.markdown.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            desktopSaveButton?.title = "Pad is empty"
+            desktopSaveButton?.image = NSImage(systemSymbolName: "exclamationmark.circle", accessibilityDescription: nil)
+            NSSound.beep()
+            return
+        }
+        guard let desktop = FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first else {
+            desktopSaveButton?.title = "Could not save"
+            desktopSaveButton?.toolTip = "The Desktop folder is unavailable."
+            NSSound.beep()
+            return
+        }
+
+        do {
+            let file = try MarkdownFileExporter.export(document.markdown, to: desktop)
+            desktopSaveButton?.title = "Saved"
+            desktopSaveButton?.image = NSImage(systemSymbolName: "checkmark", accessibilityDescription: nil)
+            desktopSaveButton?.toolTip = "Saved \(file.lastPathComponent) to the Desktop"
+        } catch {
+            desktopSaveButton?.title = "Could not save"
+            desktopSaveButton?.image = NSImage(systemSymbolName: "exclamationmark.circle", accessibilityDescription: nil)
+            desktopSaveButton?.toolTip = error.localizedDescription
+            NSSound.beep()
+        }
+    }
+
+    private func resetDesktopSaveButton() {
+        desktopSaveButton?.title = "Save .md"
+        desktopSaveButton?.image = NSImage(systemSymbolName: "arrow.down.doc", accessibilityDescription: nil)
+        desktopSaveButton?.toolTip = "Save a new Markdown file to the Desktop"
     }
 
     func runtimeSnapshot() -> RuntimeSnapshot {
@@ -234,6 +269,19 @@ final class PadWindowController: NSObject, NSTextViewDelegate {
         clearButton.setAccessibilityLabel("Clear pad")
         rootView.addSubview(clearButton)
 
+        let desktopSaveButton = NSButton(title: "Save .md", target: self, action: #selector(saveMarkdownToDesktop))
+        desktopSaveButton.translatesAutoresizingMaskIntoConstraints = false
+        desktopSaveButton.isBordered = false
+        desktopSaveButton.bezelStyle = .inline
+        desktopSaveButton.font = .systemFont(ofSize: 11, weight: .medium)
+        desktopSaveButton.contentTintColor = .secondaryLabelColor
+        desktopSaveButton.image = NSImage(systemSymbolName: "arrow.down.doc", accessibilityDescription: nil)
+        desktopSaveButton.imagePosition = .imageLeading
+        desktopSaveButton.toolTip = "Save a new Markdown file to the Desktop"
+        desktopSaveButton.setAccessibilityLabel("Save Markdown to Desktop")
+        rootView.addSubview(desktopSaveButton)
+        self.desktopSaveButton = desktopSaveButton
+
         let footer = NSTextField(labelWithString: "Esc closes  ·  ⇧⌘C copies Markdown")
         footer.translatesAutoresizingMaskIntoConstraints = false
         footer.font = .systemFont(ofSize: 11, weight: .medium)
@@ -252,6 +300,8 @@ final class PadWindowController: NSObject, NSTextViewDelegate {
             copyAllButton.centerYAnchor.constraint(equalTo: footer.centerYAnchor),
             clearButton.leadingAnchor.constraint(equalTo: copyAllButton.trailingAnchor, constant: 12),
             clearButton.centerYAnchor.constraint(equalTo: copyAllButton.centerYAnchor),
+            desktopSaveButton.leadingAnchor.constraint(equalTo: clearButton.trailingAnchor, constant: 12),
+            desktopSaveButton.centerYAnchor.constraint(equalTo: clearButton.centerYAnchor),
             footer.trailingAnchor.constraint(equalTo: rootView.trailingAnchor, constant: -20),
             footer.bottomAnchor.constraint(equalTo: rootView.bottomAnchor, constant: -13),
         ])
