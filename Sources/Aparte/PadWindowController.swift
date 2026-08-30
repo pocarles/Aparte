@@ -13,7 +13,7 @@ final class PadWindowController: NSObject, NSTextViewDelegate {
         let level: NSWindow.Level
     }
 
-    private static let preferredSize = NSSize(width: 860, height: 680)
+    private static let preferredSize = NSSize(width: 1_032, height: 816)
     private let document: DocumentController
     private let panel: ApartePanel
     private let editor: EditorTextView
@@ -97,6 +97,16 @@ final class PadWindowController: NSObject, NSTextViewDelegate {
         )
     }
 
+    func expectedSizeForRuntimeCheck() -> NSSize {
+        guard let visibleFrame = (activeScreen() ?? NSScreen.main)?.visibleFrame else {
+            return Self.preferredSize
+        }
+        return NSSize(
+            width: min(Self.preferredSize.width, visibleFrame.width - 32),
+            height: min(Self.preferredSize.height, visibleFrame.height - 32)
+        )
+    }
+
     func setMarkdownForRuntimeCheck(_ markdown: String) {
         let rendered = MarkdownCodec.render(markdown)
         editor.textStorage?.setAttributedString(rendered)
@@ -163,7 +173,7 @@ final class PadWindowController: NSObject, NSTextViewDelegate {
         editor.isAutomaticSpellingCorrectionEnabled = true
         editor.isContinuousSpellCheckingEnabled = true
         editor.drawsBackground = false
-        editor.textContainerInset = NSSize(width: 82, height: 62)
+        editor.textContainerInset = NSSize(width: 200, height: 120)
         editor.textContainer?.widthTracksTextView = true
         editor.textContainer?.lineFragmentPadding = 0
         editor.typingAttributes = AparteTypography.baseAttributes

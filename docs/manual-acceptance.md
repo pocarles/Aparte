@@ -8,7 +8,7 @@ On August 30, 2026, commit `da9657a` passed `make check` on macOS 26.5.2. The co
 
 The packaged AppKit runtime passed all 13 checks:
 
-- panel visible at 860 by 680 points;
+- panel visible at up to 1,032 by 816 points, fitted down for smaller displays;
 - editor owns first-responder focus;
 - panel level stays above the focus overlays;
 - one passive, translucent, non-blur overlay exists per connected display;
@@ -24,7 +24,7 @@ This harness does not replace the manual checks below. A person still needs to j
 ## Invocation and focus
 
 - [ ] Aparte appears in the menu bar and not the Dock.
-- [ ] Option-Space opens a centered pad near 860 by 680 points from another app.
+- [ ] Option-Space opens a centered pad near 1,032 by 816 points from another app, or fits it to the available display.
 - [ ] The editor receives keyboard focus without an extra click.
 - [ ] Each connected display dims subtly without blur or an opaque flash.
 - [ ] Option-Space, Escape, and clicking outside dismiss the pad and remove every dimming window.

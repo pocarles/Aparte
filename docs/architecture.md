@@ -21,7 +21,7 @@ Aparte is an accessory-only AppKit process. It has no Dock icon and owns:
 
 - one `NSStatusItem` menu bar button;
 - one Carbon Option-Space hotkey registration, driven by the system event loop rather than polling;
-- one reusable 860 by 680 point `NSPanel` containing a native, vertically scrolling `NSTextView`;
+- one reusable 1,032 by 816 point `NSPanel`, fitted down for smaller displays, containing a native, vertically scrolling `NSTextView`;
 - one borderless dimming window per connected display while the pad is visible;
 - one local Markdown document.
 

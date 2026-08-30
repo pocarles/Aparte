@@ -38,8 +38,13 @@ enum RuntimeAcceptance {
             drainRunLoop(for: 0.25)
 
             let initial = pad.runtimeSnapshot()
+            let expectedSize = pad.expectedSizeForRuntimeCheck()
             check(initial.isVisible, "panel-visible")
-            check(abs(initial.size.width - 860) < 1 && abs(initial.size.height - 680) < 1, "panel-860x680")
+            check(
+                abs(initial.size.width - expectedSize.width) < 1 &&
+                    abs(initial.size.height - expectedSize.height) < 1,
+                "panel-1032x816-or-screen-fitted"
+            )
             check(initial.editorOwnsFocus, "editor-first-responder")
             check(initial.level == .popUpMenu, "panel-above-overlays")
             check(overlays.runtimeWindowCount == NSScreen.screens.count, "overlay-per-screen")
