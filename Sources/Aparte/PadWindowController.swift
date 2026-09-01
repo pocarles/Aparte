@@ -10,6 +10,7 @@ final class PadWindowController: NSObject, NSTextViewDelegate {
         let editorOwnsFocus: Bool
         let formattingBarIsVisible: Bool
         let editorCanScroll: Bool
+        let editorHasSymmetricHorizontalPadding: Bool
         let level: NSWindow.Level
     }
 
@@ -134,6 +135,7 @@ final class PadWindowController: NSObject, NSTextViewDelegate {
             editorOwnsFocus: panel.firstResponder === editor,
             formattingBarIsVisible: !formattingBar.isHidden,
             editorCanScroll: editorCanScroll,
+            editorHasSymmetricHorizontalPadding: editorHasSymmetricHorizontalPadding,
             level: panel.level
         )
     }
@@ -310,7 +312,7 @@ final class PadWindowController: NSObject, NSTextViewDelegate {
         editor.isHorizontallyResizable = false
         editor.autoresizingMask = [.width]
         editor.textContainer?.containerSize = NSSize(
-            width: visibleSize.width,
+            width: max(1, visibleSize.width - editor.textContainerInset.width * 2),
             height: CGFloat.greatestFiniteMagnitude
         )
         editor.textContainer?.widthTracksTextView = true
@@ -320,6 +322,12 @@ final class PadWindowController: NSObject, NSTextViewDelegate {
     private var editorCanScroll: Bool {
         guard let scrollView = editor.enclosingScrollView else { return false }
         return editor.frame.height > scrollView.contentView.bounds.height + 1
+    }
+
+    private var editorHasSymmetricHorizontalPadding: Bool {
+        guard let textContainer = editor.textContainer else { return false }
+        let expectedWidth = max(1, editor.bounds.width - editor.textContainerInset.width * 2)
+        return abs(textContainer.containerSize.width - expectedWidth) < 1
     }
 
     private func updateFormattingBar() {

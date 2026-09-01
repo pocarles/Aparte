@@ -46,6 +46,7 @@ enum RuntimeAcceptance {
                 "panel-1032x816-or-screen-fitted"
             )
             check(initial.editorOwnsFocus, "editor-first-responder")
+            check(initial.editorHasSymmetricHorizontalPadding, "editor-symmetric-horizontal-padding")
             check(initial.level == .popUpMenu, "panel-above-overlays")
             check(overlays.runtimeWindowCount == NSScreen.screens.count, "overlay-per-screen")
             check(overlays.runtimeWindowsArePassive, "overlays-passive-no-blur-window")
