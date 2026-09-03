@@ -25,8 +25,8 @@ test -f "$app_dir/Contents/Resources/PrivacyInfo.xcprivacy"
 codesign --verify --deep --strict "$app_dir"
 codesign -d --entitlements :- "$app_dir" >"$entitlements_file" 2>/dev/null
 entitlements="$(plutil -p "$entitlements_file")"
-rg -q '"com\.apple\.security\.app-sandbox" => true' <<<"$entitlements"
-rg -q '"com\.apple\.security\.files\.user-selected\.read-write" => true' <<<"$entitlements"
+grep -q '"com\.apple\.security\.app-sandbox" => true' <<<"$entitlements"
+grep -q '"com\.apple\.security\.files\.user-selected\.read-write" => true' <<<"$entitlements"
 entitlement_count="$(plutil -convert xml1 -o - "$entitlements_file" | /usr/bin/xmllint --xpath 'count(/plist/dict/key)' -)"
 expected_entitlement_count=2
 if [[ "$validation_level" == "distribution" ]]; then
