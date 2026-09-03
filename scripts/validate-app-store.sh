@@ -24,9 +24,16 @@ test -f "$app_dir/Contents/Resources/PrivacyInfo.xcprivacy"
 
 codesign --verify --deep --strict "$app_dir"
 codesign -d --entitlements :- "$app_dir" >"$entitlements_file" 2>/dev/null
-entitlements="$(plutil -p "$entitlements_file")"
-grep -q '"com\.apple\.security\.app-sandbox" => true' <<<"$entitlements"
-grep -q '"com\.apple\.security\.files\.user-selected\.read-write" => true' <<<"$entitlements"
+for entitlement in \
+    com.apple.security.app-sandbox \
+    com.apple.security.files.user-selected.read-write
+do
+    value="$(/usr/libexec/PlistBuddy -c "Print :$entitlement" "$entitlements_file" 2>/dev/null || true)"
+    if [[ "$value" != "true" ]]; then
+        echo "Required entitlement is missing or disabled: $entitlement" >&2
+        exit 1
+    fi
+done
 entitlement_count="$(plutil -convert xml1 -o - "$entitlements_file" | /usr/bin/xmllint --xpath 'count(/plist/dict/key)' -)"
 expected_entitlement_count=2
 if [[ "$validation_level" == "distribution" ]]; then
