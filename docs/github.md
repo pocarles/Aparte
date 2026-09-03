@@ -1,14 +1,17 @@
-# GitHub status
+# GitHub publication
 
-The private GitHub repository is live at <https://github.com/pocarles/Aparte>.
+The public repository lives at <https://github.com/pocarles/Aparte>. Its homepage is
+<https://pocarles.com/aparte/> and releases are signed, notarized Universal 2 disk images.
 
-Verified August 30, 2026:
+Publication settings:
 
 - repository: `pocarles/Aparte`;
-- visibility: private;
+- visibility: public;
 - default branch: `main`;
-- local remote: `git@github.com:pocarles/Aparte.git`;
-- pushed history: every milestone commit on `main`.
+- license: MIT;
+- release asset: `Aparte.dmg` with `Aparte.dmg.sha256`;
+- release workflow: `.github/workflows/release.yml`;
+- protected credential environment: `release`.
 
 Verification commands:
 
@@ -18,4 +21,4 @@ git status -sb
 git log --oneline --decorate --max-count=8
 ```
 
-Do not change visibility, enable publication automation, or create a release without a separate release decision.
+Tag releases only after `make check`, `make check-app-store`, and `make check-direct` pass on the intended commit.

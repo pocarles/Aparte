@@ -1,5 +1,6 @@
 import AppKit
 import AparteCore
+import UniformTypeIdentifiers
 
 @MainActor
 final class PadWindowController: NSObject, NSTextViewDelegate {
@@ -20,7 +21,7 @@ final class PadWindowController: NSObject, NSTextViewDelegate {
     private let editor: EditorTextView
     private let rootView: PadBackgroundView
     private let formattingBar: FormattingBar
-    private weak var desktopSaveButton: NSButton?
+    private weak var saveButton: NSButton?
     var onDismiss: (() -> Void)?
 
     var isVisible: Bool { panel.isVisible }
@@ -43,7 +44,7 @@ final class PadWindowController: NSObject, NSTextViewDelegate {
     }
 
     func show() {
-        resetDesktopSaveButton()
+        resetSaveButton()
         recenter()
         panel.alphaValue = 0
         panel.makeKeyAndOrderFront(nil)
@@ -94,37 +95,37 @@ final class PadWindowController: NSObject, NSTextViewDelegate {
         formattingBar.isHidden = true
     }
 
-    @objc private func saveMarkdownToDesktop() {
+    @objc func saveMarkdownAs() {
         guard !document.markdown.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            desktopSaveButton?.title = "Pad is empty"
-            desktopSaveButton?.image = NSImage(systemSymbolName: "exclamationmark.circle", accessibilityDescription: nil)
-            NSSound.beep()
-            return
-        }
-        guard let desktop = FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first else {
-            desktopSaveButton?.title = "Could not save"
-            desktopSaveButton?.toolTip = "The Desktop folder is unavailable."
+            saveButton?.title = "Pad is empty"
+            saveButton?.image = NSImage(systemSymbolName: "exclamationmark.circle", accessibilityDescription: nil)
             NSSound.beep()
             return
         }
 
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = "\(MarkdownFileExporter.suggestedBaseName(for: document.markdown)).md"
+        panel.allowedContentTypes = [.markdown]
+        panel.canCreateDirectories = true
+        guard panel.runModal() == .OK, let destination = panel.url else { return }
+
         do {
-            let file = try MarkdownFileExporter.export(document.markdown, to: desktop)
-            desktopSaveButton?.title = "Saved"
-            desktopSaveButton?.image = NSImage(systemSymbolName: "checkmark", accessibilityDescription: nil)
-            desktopSaveButton?.toolTip = "Saved \(file.lastPathComponent) to the Desktop"
+            try document.markdown.write(to: destination, atomically: true, encoding: .utf8)
+            saveButton?.title = "Saved"
+            saveButton?.image = NSImage(systemSymbolName: "checkmark", accessibilityDescription: nil)
+            saveButton?.toolTip = "Saved \(destination.lastPathComponent)"
         } catch {
-            desktopSaveButton?.title = "Could not save"
-            desktopSaveButton?.image = NSImage(systemSymbolName: "exclamationmark.circle", accessibilityDescription: nil)
-            desktopSaveButton?.toolTip = error.localizedDescription
+            saveButton?.title = "Could not save"
+            saveButton?.image = NSImage(systemSymbolName: "exclamationmark.circle", accessibilityDescription: nil)
+            saveButton?.toolTip = error.localizedDescription
             NSSound.beep()
         }
     }
 
-    private func resetDesktopSaveButton() {
-        desktopSaveButton?.title = "Save"
-        desktopSaveButton?.image = NSImage(systemSymbolName: "arrow.down.doc", accessibilityDescription: nil)
-        desktopSaveButton?.toolTip = "Save a new Markdown file to the Desktop"
+    private func resetSaveButton() {
+        saveButton?.title = "Save"
+        saveButton?.image = NSImage(systemSymbolName: "arrow.down.doc", accessibilityDescription: nil)
+        saveButton?.toolTip = "Choose where to save a Markdown file"
     }
 
     func runtimeSnapshot() -> RuntimeSnapshot {
@@ -259,18 +260,18 @@ final class PadWindowController: NSObject, NSTextViewDelegate {
         copyAllButton.setAccessibilityLabel("Copy all")
         rootView.addSubview(copyAllButton)
 
-        let desktopSaveButton = NSButton(title: "Save", target: self, action: #selector(saveMarkdownToDesktop))
-        desktopSaveButton.translatesAutoresizingMaskIntoConstraints = false
-        desktopSaveButton.isBordered = false
-        desktopSaveButton.bezelStyle = .inline
-        desktopSaveButton.font = .systemFont(ofSize: 11, weight: .medium)
-        desktopSaveButton.contentTintColor = .secondaryLabelColor
-        desktopSaveButton.image = NSImage(systemSymbolName: "arrow.down.doc", accessibilityDescription: nil)
-        desktopSaveButton.imagePosition = .imageLeading
-        desktopSaveButton.toolTip = "Save a new Markdown file to the Desktop"
-        desktopSaveButton.setAccessibilityLabel("Save Markdown to Desktop")
-        rootView.addSubview(desktopSaveButton)
-        self.desktopSaveButton = desktopSaveButton
+        let saveButton = NSButton(title: "Save", target: self, action: #selector(saveMarkdownAs))
+        saveButton.translatesAutoresizingMaskIntoConstraints = false
+        saveButton.isBordered = false
+        saveButton.bezelStyle = .inline
+        saveButton.font = .systemFont(ofSize: 11, weight: .medium)
+        saveButton.contentTintColor = .secondaryLabelColor
+        saveButton.image = NSImage(systemSymbolName: "arrow.down.doc", accessibilityDescription: nil)
+        saveButton.imagePosition = .imageLeading
+        saveButton.toolTip = "Choose where to save a Markdown file"
+        saveButton.setAccessibilityLabel("Save Markdown")
+        rootView.addSubview(saveButton)
+        self.saveButton = saveButton
 
         let clearButton = NSButton(title: "Clear", target: self, action: #selector(clearPad))
         clearButton.translatesAutoresizingMaskIntoConstraints = false
@@ -294,10 +295,10 @@ final class PadWindowController: NSObject, NSTextViewDelegate {
             scrollView.bottomAnchor.constraint(equalTo: copyAllButton.topAnchor, constant: -8),
             copyAllButton.leadingAnchor.constraint(equalTo: rootView.leadingAnchor, constant: 16),
             copyAllButton.bottomAnchor.constraint(equalTo: rootView.bottomAnchor, constant: -8),
-            desktopSaveButton.leadingAnchor.constraint(equalTo: copyAllButton.trailingAnchor, constant: 12),
-            desktopSaveButton.centerYAnchor.constraint(equalTo: copyAllButton.centerYAnchor),
-            clearButton.leadingAnchor.constraint(equalTo: desktopSaveButton.trailingAnchor, constant: 12),
-            clearButton.centerYAnchor.constraint(equalTo: desktopSaveButton.centerYAnchor),
+            saveButton.leadingAnchor.constraint(equalTo: copyAllButton.trailingAnchor, constant: 12),
+            saveButton.centerYAnchor.constraint(equalTo: copyAllButton.centerYAnchor),
+            clearButton.leadingAnchor.constraint(equalTo: saveButton.trailingAnchor, constant: 12),
+            clearButton.centerYAnchor.constraint(equalTo: saveButton.centerYAnchor),
         ])
 
         rootView.layoutSubtreeIfNeeded()
@@ -354,6 +355,12 @@ final class PadWindowController: NSObject, NSTextViewDelegate {
     private func activeScreen() -> NSScreen? {
         let mouse = NSEvent.mouseLocation
         return NSScreen.screens.first(where: { NSMouseInRect(mouse, $0.frame, false) }) ?? NSScreen.main
+    }
+}
+
+private extension UTType {
+    static var markdown: UTType {
+        UTType(filenameExtension: "md") ?? .plainText
     }
 }
 

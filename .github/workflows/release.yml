@@ -1,0 +1,126 @@
+name: Direct download release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version without v (dry-run)
+        required: true
+        default: 1.0.0
+        type: string
+      build_number:
+        description: Positive bundle build number (dry-run)
+        required: true
+        default: "1"
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: direct-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  package:
+    runs-on: macos-15
+    timeout-minutes: 60
+    environment: release
+    outputs:
+      version: ${{ steps.metadata.outputs.version }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with: { fetch-depth: 0 }
+      - id: metadata
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_BUILD: ${{ inputs.build_number }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main || { echo "Tag commit is not contained in origin/main" >&2; exit 1; }
+          if [[ "$EVENT_NAME" == push ]]; then
+            [[ "$REF_NAME" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || exit 64
+            version=${REF_NAME#v}; build_number=$GITHUB_RUN_NUMBER
+          else
+            [[ "$INPUT_VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || exit 64
+            [[ "$INPUT_BUILD" =~ ^[1-9][0-9]*$ ]] || exit 64
+            version=$INPUT_VERSION; build_number=$INPUT_BUILD
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "build_number=$build_number" >> "$GITHUB_OUTPUT"
+      - run: make check
+      - name: Import temporary signing credentials
+        id: credentials
+        env:
+          CERTIFICATE_P12: ${{ secrets.DEVELOPER_ID_CERT_P12 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.DEVELOPER_ID_CERT_PASSWORD }}
+          API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+          API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+        run: |
+          set -euo pipefail; set +x; umask 077
+          [[ -n "$CERTIFICATE_P12" && -n "$CERTIFICATE_PASSWORD" && -n "$API_KEY_P8" && -n "$API_KEY_ID" ]]
+          keychain="$RUNNER_TEMP/aparte-signing.keychain-db"; password=$(uuidgen)
+          certificate="$RUNNER_TEMP/developer-id.p12"; api_key="$RUNNER_TEMP/AuthKey_${API_KEY_ID}.p8"
+          printf '%s' "$CERTIFICATE_P12" | base64 -D > "$certificate"; printf '%s' "$API_KEY_P8" > "$api_key"
+          chmod 600 "$certificate" "$api_key"
+          security create-keychain -p "$password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          security import "$certificate" -k "$keychain" -P "$CERTIFICATE_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
+          rm -f "$certificate"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$password" "$keychain" >/dev/null
+          security list-keychains -d user -s "$keychain"
+          identities=$(security find-identity -v -p codesigning "$keychain")
+          identity=$(sed -n 's/.*"\(Developer ID Application:[^"]*\)".*/\1/p' <<< "$identities" | sed -n '1p')
+          [[ -n "$identity" ]] || exit 1
+          echo "keychain=$keychain" >> "$GITHUB_OUTPUT"; echo "api_key=$api_key" >> "$GITHUB_OUTPUT"; echo "identity=$identity" >> "$GITHUB_OUTPUT"
+      - name: Build, notarize, and verify
+        env:
+          APARTE_SIGN_IDENTITY: ${{ steps.credentials.outputs.identity }}
+          APARTE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_API_KEY_PATH: ${{ steps.credentials.outputs.api_key }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+          APARTE_VERSION: ${{ steps.metadata.outputs.version }}
+          APARTE_BUILD_NUMBER: ${{ steps.metadata.outputs.build_number }}
+          APARTE_OUTPUT_DIR: ${{ runner.temp }}/aparte-release
+        run: ./scripts/package-direct.sh --mode release
+      - name: Remove temporary credentials
+        if: always()
+        env:
+          API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+        run: |
+          set +e
+          security delete-keychain "$RUNNER_TEMP/aparte-signing.keychain-db" 2>/dev/null
+          rm -f "$RUNNER_TEMP/AuthKey_${API_KEY_ID}.p8" "$RUNNER_TEMP/developer-id.p12"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: Aparte-${{ steps.metadata.outputs.version }}
+          path: |
+            ${{ runner.temp }}/aparte-release/Aparte.dmg
+            ${{ runner.temp }}/aparte-release/Aparte.dmg.sha256
+          if-no-files-found: error
+
+  publish:
+    if: github.event_name == 'push'
+    needs: package
+    runs-on: ubuntu-latest
+    permissions: { contents: write }
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: Aparte-${{ needs.package.outputs.version }}
+          path: release-assets
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail; cd release-assets
+          sha256sum -c Aparte.dmg.sha256
+          gh release create "$TAG" Aparte.dmg Aparte.dmg.sha256 --repo "$GITHUB_REPOSITORY" --verify-tag --title "Aparte ${TAG#v}" --generate-notes --draft
+          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false

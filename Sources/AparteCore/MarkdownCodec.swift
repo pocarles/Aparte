@@ -60,11 +60,12 @@ public enum MarkdownCodec {
             var contentRange = paragraphRange
             while contentRange.length > 0 {
                 let last = NSMaxRange(contentRange) - 1
-                if CharacterSet.newlines.contains(UnicodeScalar(source.character(at: last))!) {
-                    contentRange.length -= 1
-                } else {
+                let finalCharacterRange = source.rangeOfComposedCharacterSequence(at: last)
+                let finalCharacter = source.substring(with: finalCharacterRange)
+                guard finalCharacter.unicodeScalars.allSatisfy(CharacterSet.newlines.contains) else {
                     break
                 }
+                contentRange.length -= finalCharacterRange.length
             }
 
             let headingLevel = integerAttribute(.aparteHeadingLevel, in: attributedString, range: contentRange)

@@ -21,6 +21,8 @@ The packaged AppKit runtime passed all 13 checks:
 
 This harness does not replace the manual checks below. A person still needs to judge the animation and typography, invoke Option-Space from another app, test rich paste through the live clipboard, and review both system appearances.
 
+On September 3, 2026, the locally prepared sandboxed candidate opened with a separate empty document. It accepted text ending in an emoji without crashing and opened the standard Save panel with `One clear place to think` proposed from the first line. The save was cancelled, the throwaway document was cleared, the candidate was stopped, and the normal local app was relaunched. The existing unsandboxed document was not opened or changed. Computer-driven Option-Space did not produce a conclusive result, so the physical shortcut check remains open.
+
 ## Invocation and focus
 
 - [ ] Aparte appears in the menu bar and not the Dock.
@@ -47,8 +49,8 @@ This harness does not replace the manual checks below. A person still needs to j
 - [ ] Pasting plain text stays plain.
 - [ ] Copy as Markdown produces clean Markdown for the selected text or full document.
 - [ ] Copy selects the full document and places its normal rich and plain representations on the clipboard.
-- [ ] Save Markdown As writes a readable `.md` file.
-- [ ] Save creates a readable Markdown file on the Desktop and adds a number instead of overwriting an existing file.
+- [ ] Save and Save Markdown As open a system Save panel with a useful filename derived from the first non-empty line.
+- [ ] Saving writes readable Markdown to a user-selected folder and handles overwrite confirmation through the system panel.
 - [ ] Copy, Save, Clear, and every abbreviated formatting control explain their action on hover.
 
 ## Persistence and appearance
@@ -64,3 +66,13 @@ This harness does not replace the manual checks below. A person still needs to j
 - [ ] Idle resident memory is recorded in `docs/performance.md`.
 - [ ] Twenty consecutive invoke, type, dismiss cycles do not lose content, focus, or overlays.
 - [ ] The app remains responsive after display arrangement and appearance changes.
+
+## App Store candidate
+
+- [ ] Test `dist/app-store/Aparte.app`, not the normal local package.
+- [ ] Use `open -na dist/app-store/Aparte.app --args --show-for-acceptance` when the normal app is not running to open the candidate without first testing the shortcut.
+- [ ] Confirm the first sandboxed launch starts with its own local document and never changes the normal local build's document.
+- [ ] Save a Markdown file to the Desktop through the system panel, confirm the file exists, then open it and compare its full contents. Cancelling the panel does not pass this check.
+- [ ] Verify Option-Space from another app while the sandboxed candidate is active.
+- [ ] Confirm the app icon is clear in Finder, the menu bar, About Aparte, and at the smallest displayed size.
+- [ ] Capture at least one clean 16:10 screenshot at an Apple-accepted Mac size.

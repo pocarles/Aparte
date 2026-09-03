@@ -20,6 +20,31 @@ enum RuntimeAcceptance {
         let fileURL = root.appendingPathComponent("aparte.md")
         defer { try? FileManager.default.removeItem(at: root) }
 
+        if ProcessInfo.processInfo.arguments.contains("--exercise-default-store") {
+            do {
+                let defaultStore = try PersistenceStore()
+                let originalData = try? Data(contentsOf: defaultStore.fileURL)
+                defer {
+                    if let originalData {
+                        try? originalData.write(to: defaultStore.fileURL, options: .atomic)
+                    } else {
+                        try? FileManager.default.removeItem(at: defaultStore.fileURL)
+                    }
+                }
+
+                let marker = "# Sandbox container check \(UUID().uuidString)"
+                try defaultStore.save(marker)
+                let savedMarker = try defaultStore.load()
+                check(savedMarker == marker, "default-application-support-write")
+                check(
+                    defaultStore.fileURL.path.contains("/Containers/com.pocarles.aparte/Data/Library/Application Support/Aparte/aparte.md"),
+                    "default-store-is-sandbox-container"
+                )
+            } catch {
+                failed.append("default-store-error:\(String(describing: error))")
+            }
+        }
+
         do {
             let store = try PersistenceStore(fileURL: fileURL)
             let document = try DocumentController(store: store)
@@ -119,6 +144,7 @@ enum RuntimeAcceptance {
                 "visual quality on each connected display",
                 "light and dark appearance review",
                 "real rich paste through the UI",
+                "Desktop save and file comparison through the system panel",
             ],
         ]
         if let data = try? JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys]),

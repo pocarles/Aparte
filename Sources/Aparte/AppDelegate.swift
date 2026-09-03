@@ -1,6 +1,5 @@
 import AppKit
 import AparteCore
-import UniformTypeIdentifiers
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -54,6 +53,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             return dismissed ? nil : event
         }
+
+        if ProcessInfo.processInfo.arguments.contains("--show-for-acceptance") {
+            showPad()
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -93,18 +96,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc func saveMarkdownAs() {
-        guard let markdown = documentController?.markdown else { return }
-        let panel = NSSavePanel()
-        panel.nameFieldStringValue = "aparte.md"
-        panel.allowedContentTypes = [.markdown]
-        panel.canCreateDirectories = true
-        if panel.runModal() == .OK, let url = panel.url {
-            do {
-                try markdown.write(to: url, atomically: true, encoding: .utf8)
-            } catch {
-                NSApp.presentError(error)
-            }
-        }
+        padController?.saveMarkdownAs()
     }
 
     @objc private func screenLayoutChanged() {
@@ -123,11 +115,5 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         alert.messageText = "Aparte could not open its local document."
         alert.runModal()
         NSApp.terminate(nil)
-    }
-}
-
-private extension UTType {
-    static var markdown: UTType {
-        UTType(filenameExtension: "md") ?? .plainText
     }
 }

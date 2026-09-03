@@ -26,5 +26,19 @@ final class MarkdownCodecTests: XCTestCase {
         let markdown = "one\ntwo\n"
         XCTAssertEqual(MarkdownCodec.markdown(from: MarkdownCodec.render(markdown)), markdown)
     }
-}
 
+    func testEmojiAtEndOfDocumentRoundTrips() {
+        let markdown = "A thought 💭"
+        XCTAssertEqual(MarkdownCodec.markdown(from: MarkdownCodec.render(markdown)), markdown)
+    }
+
+    func testMultiScalarEmojiSequencesRoundTrip() {
+        let markdown = "France 🇫🇷\nHello 👋🏽"
+        XCTAssertEqual(MarkdownCodec.markdown(from: MarkdownCodec.render(markdown)), markdown)
+    }
+
+    func testEmojiBeforeTrailingNewlineRoundTrips() {
+        let markdown = "Done ✅\n"
+        XCTAssertEqual(MarkdownCodec.markdown(from: MarkdownCodec.render(markdown)), markdown)
+    }
+}

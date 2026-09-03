@@ -20,6 +20,12 @@ Five samples two seconds apart:
 
 The measured idle CPU requirement passes. All five samples were 0.0%.
 
+## App Store candidate preflight
+
+Measured September 3, 2026 against the ad-hoc signed, sandboxed universal candidate produced by `make check-app-store`. The first sample, taken about one second after launch, was 2.2% CPU and 98,256 KiB RSS. The next four samples, two seconds apart, were 0.0% CPU. RSS ranged from 98,256 to 99,376 KiB and ended at 98,992 KiB, or about 96.7 MiB. `lsof` reported zero network sockets.
+
+This is preflight evidence, not the final Store measurement. Repeat it after signing the exact package intended for upload.
+
 ## Commands
 
 ```sh

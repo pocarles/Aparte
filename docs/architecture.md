@@ -33,7 +33,7 @@ The panel sits above the dimming windows. Focus mode animates only window alpha 
 
 - `MarkdownCodec` converts the supported Markdown subset to a normalized attributed string and back.
 - `PasteNormalizer` accepts RTF, HTML, or plain text but keeps only supported meaning. It drops foreign fonts, sizes, colors, and spacing.
-- `PersistenceStore` atomically writes UTF-8 Markdown to `~/Library/Application Support/Aparte/aparte.md`.
+- `PersistenceStore` atomically writes UTF-8 Markdown to the application support directory returned by Foundation. A normal local build uses `~/Library/Application Support/Aparte/aparte.md`. A sandboxed App Store build uses Aparte's private container.
 
 The editor displays a normalized attributed string. Markdown remains the saved and export format. This avoids an opaque attributed-text archive and keeps the document usable outside Aparte.
 
@@ -41,7 +41,7 @@ Supported V1 meaning is bold, italic, underline through `<u>`, headings, ordered
 
 The Link popover reads the clipboard only when the user opens it. It prefills only when the clipboard contains one valid HTTP or HTTPS address. Aparte does not monitor clipboard changes in the background.
 
-The lower Save action writes a new Markdown file to the user's Desktop. It derives the filename from the first non-empty line, limits it to 80 characters, and adds a numeric suffix rather than overwriting an existing file. Save Markdown As remains available when the user wants another location.
+The lower Save action opens the standard macOS Save panel. It derives the proposed filename from the first non-empty line and limits it to 80 characters. The user chooses the destination and confirms any overwrite. This interaction gives the sandboxed app access only to the selected file.
 
 ## UI structure
 
@@ -53,6 +53,10 @@ The autosave debounce uses a one-shot `DispatchWorkItem`. It is canceled and rep
 
 Aparte has no external package dependency, web view, network request, updater, account, cloud sync, analytics, or telemetry. It links only Apple system frameworks through AppKit, Foundation, Uniform Type Identifiers, and Carbon.
 
+The privacy manifest declares no tracking, collected data, tracking domains, or required-reason API use. If the code later adds one of those behaviors, the manifest and App Store privacy answers must change together.
+
 ## Packaging
 
-Swift Package Manager builds the executable and `scripts/package-app.sh` assembles `dist/Aparte.app`. The local package is ad-hoc signed. Distribution outside local development still needs a Developer ID signature and notarization.
+Swift Package Manager builds the executable and `scripts/package-app.sh` assembles the app. The normal local package stays separate from the App Store candidate so sandbox testing does not silently replace the user's existing local document.
+
+The App Store candidate is universal for Apple silicon and Intel Macs. Its entitlements enable only App Sandbox and read-write access to files chosen through a system panel. `scripts/package-mas.sh` can sign the app and installer after the correct Apple Distribution certificate, Mac Installer Distribution certificate, and provisioning profile exist. It does not upload.

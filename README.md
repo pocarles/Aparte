@@ -1,31 +1,48 @@
+<p align="center">
+  <img src="Support/AppIconSource.png" width="128" height="128" alt="Aparte app icon">
+</p>
+
 # Aparte
 
-Aparte is a native macOS menu bar writing pad. Press Option-Space, write, copy, and press Escape. It keeps one local Markdown document and stays out of the way.
+Aparte is a native macOS writing pad that is always one shortcut away. Press
+Option-Space, write, copy or save what you need, then press Escape. The same
+local document is waiting when you come back.
 
-## V1 principles
+[Download the latest release](https://github.com/pocarles/Aparte/releases/latest/download/Aparte.dmg)
+or read the [product page](https://pocarles.com/aparte/).
 
-- Native AppKit and TextKit. No Electron or embedded browser.
-- One focused writing pad, not a notes library or chat client.
-- Local Markdown only. No accounts, cloud sync, analytics, or network calls.
-- No idle polling. CPU should settle near zero while the pad is hidden.
+## What it does
 
-## Requirements
+- Opens from any app with Option-Space.
+- Dims the rest of the screen without taking over your desktop.
+- Supports headings, lists, links, bold, italic, and underline.
+- Copies clean Markdown or saves a Markdown file where you choose.
+- Autosaves one local document and restores it on relaunch.
+- Settles near zero CPU while hidden.
 
-- macOS 14 or later
-- Xcode 16 or a newer Swift 6 toolchain
+Aparte has no account, cloud sync, analytics, advertising, updater, network
+connection, or third-party package dependency.
 
-## Build and run
+## Install
 
-```sh
-make check
-make run
-```
+Aparte requires macOS 14 or later and includes native Apple silicon and Intel
+code.
 
-The packaged app is written to `dist/Aparte.app` and ad-hoc signed for local use.
+1. Download [`Aparte.dmg`](https://github.com/pocarles/Aparte/releases/latest/download/Aparte.dmg)
+   and [`Aparte.dmg.sha256`](https://github.com/pocarles/Aparte/releases/latest/download/Aparte.dmg.sha256).
+2. Optionally verify the download in Terminal:
 
-`make check` also runs the packaged app's `--runtime-acceptance` mode. That mode exercises native panel geometry, first-responder focus, per-display overlays, the contextual formatting bar, Markdown persistence and restoration, Escape dismissal, and twenty show/hide cycles without touching the user's saved document.
+   ```sh
+   shasum -a 256 -c Aparte.dmg.sha256
+   ```
 
-## Keyboard shortcuts
+3. Open the disk image and drag Aparte to Applications.
+
+Public release files come from the protected GitHub workflow. The app is signed
+with Developer ID, notarized by Apple, and checked by Gatekeeper before GitHub
+publishes it.
+
+## Shortcuts
 
 | Action | Shortcut |
 | --- | --- |
@@ -37,8 +54,37 @@ The packaged app is written to `dist/Aparte.app` and ad-hoc signed for local use
 | Copy as Markdown | Command-Shift-C |
 | Save Markdown As | Command-Shift-S |
 
-See [docs/architecture.md](docs/architecture.md), [docs/manual-acceptance.md](docs/manual-acceptance.md), [docs/performance.md](docs/performance.md), and [docs/github.md](docs/github.md) for V1 design and proof.
+## Privacy
+
+Aparte stores one Markdown document in your macOS Application Support folder.
+It does not send the document, usage data, or diagnostics anywhere. Read the
+[privacy statement](PRIVACY.md) for the complete boundary.
+
+## Build from source
+
+Install Xcode 16 or a newer Swift 6 toolchain, then run:
+
+```sh
+git clone https://github.com/pocarles/Aparte.git
+cd Aparte
+make check
+make run
+```
+
+`make check` runs the unit tests, builds the app, exercises its native runtime
+acceptance checks, and verifies the package signature. `make check-direct`
+also builds and verifies the Universal 2 disk-image shape without Apple
+credentials.
+
+The source-built app is ad-hoc signed for the Mac that built it. Use the
+notarized GitHub release when installing Aparte on another Mac.
+
+## Project boundary
+
+Aparte is one focused document, not a notes library. The source stays native,
+local, and quiet. See [CONTRIBUTING.md](CONTRIBUTING.md),
+[SECURITY.md](SECURITY.md), and [docs/architecture.md](docs/architecture.md).
 
 ## License
 
-Aparte is available under the MIT License. Third-party research and notices are recorded in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+MIT. Copyright © 2026 Pierre-Olivier Carles. See [LICENSE](LICENSE).

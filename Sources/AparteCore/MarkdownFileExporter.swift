@@ -20,7 +20,7 @@ public enum MarkdownFileExporter {
         return destination
     }
 
-    static func suggestedBaseName(for markdown: String) -> String {
+    public static func suggestedBaseName(for markdown: String) -> String {
         guard let firstLine = markdown
             .split(whereSeparator: \Character.isNewline)
             .map({ String($0).trimmingCharacters(in: .whitespaces) })

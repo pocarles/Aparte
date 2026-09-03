@@ -6,8 +6,12 @@
     <string>en</string>
     <key>CFBundleExecutable</key>
     <string>Aparte</string>
+    <key>CFBundleDisplayName</key>
+    <string>Aparte</string>
     <key>CFBundleIdentifier</key>
     <string>com.pocarles.aparte</string>
+    <key>CFBundleIconFile</key>
+    <string>Aparte.icns</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>
@@ -20,10 +24,13 @@
     <string>1</string>
     <key>LSMinimumSystemVersion</key>
     <string>14.0</string>
+    <key>LSApplicationCategoryType</key>
+    <string>public.app-category.productivity</string>
     <key>LSUIElement</key>
     <true/>
+    <key>ITSAppUsesNonExemptEncryption</key>
+    <false/>
     <key>NSHumanReadableCopyright</key>
     <string>Copyright 2026 Pierre-Olivier Carles</string>
 </dict>
 </plist>
-
