@@ -2,6 +2,18 @@
 
 All notable changes appear here. The project follows semantic versioning.
 
+## 1.1.0 - 2026-09-07
+
+- Every writing command has a keyboard shortcut, shown beside its option in the menu. Formatting, editing, recovery, and app commands expand within the card.
+- Three-dot footer button opens an options card inside the pad. Choosing an option, clicking outside, or pressing Escape closes it.
+- Smaller submenu arrows, distinct option indicators, one expanded group at a time, and space between shortcuts and the scrollbar.
+- Plain-text copy and full-pad copy that preserves the cursor and selection.
+- Optional word and character count for the pad or selected passage.
+- Remembered display zoom with keyboard controls.
+- One local recovery copy of the last cleared draft, with restore and discard actions.
+- Automatic bullet and numbered-list continuation, with Return to leave an empty item.
+- Configurable global shortcut and optional launch at login.
+
 ## 1.0.0 - 2026-09-03
 
 - Signed and notarized Universal 2 direct-download release with a DMG and SHA-256 checksum.

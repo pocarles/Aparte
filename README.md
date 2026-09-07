@@ -13,10 +13,13 @@ or read the [product page](https://pocarles.com/aparte/).
 
 ## What it does
 
-- Opens from any app with Option-Space.
+- Opens from any app with Option-Space, or a shortcut you choose.
 - Dims the rest of the screen without taking over your desktop.
 - Supports headings, lists, links, bold, italic, and underline.
-- Copies clean Markdown or saves a Markdown file where you choose.
+- Copies formatted text, plain text, or Markdown, and saves a Markdown file where you choose.
+- Continues bullets and numbered lists when you press Return.
+- Offers an optional word and character count and text zoom.
+- Keeps one recovery copy of your last cleared draft.
 - Autosaves one local document and restores it on relaunch.
 - Settles near zero CPU while hidden.
 
@@ -44,19 +47,69 @@ publishes it.
 
 ## Shortcuts
 
+Every command shows its shortcut in small text in the three-dot menu. Editing,
+formatting, recovery, and app commands are grouped there; click a group to expand
+it. Only one group stays open at a time. A filled dot marks an option that is turned on.
+Shortcuts work while writing and while the options card is open.
+
 | Action | Shortcut |
 | --- | --- |
-| Show or hide Aparte | Option-Space |
-| Dismiss | Escape |
-| Bold | Command-B |
-| Italic | Command-I |
-| Underline | Command-U |
+| Show or hide Aparte | Option-Space, or your chosen global shortcut |
+| Open or close writing options | Command-/ |
+| Close the card or dismiss the pad | Escape |
+| Copy whole pad | Command-Option-C |
 | Copy as Markdown | Command-Shift-C |
+| Copy as plain text | Command-Option-Shift-C |
 | Save Markdown As | Command-Shift-S |
+| Clear pad | Command-Option-Delete |
+| Restore last cleared text | Command-Shift-R |
+| Discard recovery copy, with confirmation | Command-Option-Shift-R |
+| Show or hide word and character count | Command-Shift-W |
+| Zoom in / out | Command-plus / Command-minus |
+| Reset text size | Command-0 |
+| Configure the global shortcut | Command-comma |
+| Toggle launch at login | Command-Option-L |
+| Bold / italic / underline | Command-B / I / U |
+| Heading | Command-Option-1 |
+| Bulleted / numbered list | Command-Shift-8 / 7 |
+| Add a link to selected text | Command-K |
+| Undo / redo | Command-Z / Command-Shift-Z |
+| Cut / copy selection / paste / select all | Command-X / C / V / A |
+| Hide Aparte | Command-H |
+| About Aparte | Command-Control-A |
+| Quit Aparte | Command-Q |
+
+Only show/hide is global. The other shortcuts apply while working in Aparte.
+Unavailable actions stay disabled. Clear keeps a recovery copy, and discarding
+that copy still asks for confirmation.
+
+## Small controls, when you need them
+
+Click the three dots at the bottom right of the pad to show the word and character count, change
+text size, choose a keyboard shortcut, or turn launch at login on or off. Options
+open in a small card inside the pad. Choose an option, click outside the card, or
+press Escape to close it and return to your writing. The
+counter starts hidden. It counts the selected passage when you select text,
+otherwise the whole pad. Characters include spaces and line breaks.
+
+Copy at the bottom copies the whole pad without moving your cursor. The three-dot
+menu offers plain text or Markdown; these use your selection when there is one,
+otherwise the whole pad. Plain text removes formatting and does not add Markdown
+syntax. Typed punctuation and visible list markers remain part of the text.
+
+Text zoom changes only how the pad looks, not the formatting you copy or save.
+Your zoom and counter choices are remembered. In a list, Return starts the next
+item. Return on an empty item ends the list.
+
+Clear saves one recovery copy before erasing the pad. Command-Z still undoes
+Clear immediately. To recover after quitting, choose Restore last cleared text
+from the menu. Restoring over current writing asks first and can be undone.
+Clearing a new nonempty draft replaces the recovery copy. Discard recovery copy
+removes it without changing your current pad.
 
 ## Privacy
 
-Aparte stores one Markdown document in your macOS Application Support folder.
+Aparte stores its working Markdown document and, after Clear, one recovery copy in your macOS Application Support folder.
 It does not send the document, usage data, or diagnostics anywhere. Read the
 [privacy statement](PRIVACY.md) for the complete boundary.
 

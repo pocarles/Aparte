@@ -6,7 +6,7 @@ Aparte is built from scratch, with Wisp and Inkdown used as design references on
 
 This is the smallest clean choice.
 
-- Forking Wisp would bring preferences, font selection, storage switching, launch-at-login, updating, tours, release UI, and other product behavior that Aparte does not need. Wisp did confirm that a Carbon hotkey, an accessory AppKit process, an `NSPanel`, and Markdown-on-disk fit the intended shape.
+- For V1, forking Wisp would have brought font selection, storage switching, updating, tours, release UI, and other product behavior outside Aparte's scope. Wisp did confirm that a Carbon hotkey, an accessory AppKit process, an `NSPanel`, and Markdown-on-disk fit the intended shape.
 - Forking Inkdown would bring a document browser, `DocumentGroup`, split preview, WebKit, JavaScript, bundled Markdown packages, KaTeX, Mermaid, and a large third-party license set. Inkdown did confirm the value of `NSTextView`, normalized UTF-16 ranges, and SF Pro typography.
 - Copying isolated code would still create attribution and maintenance work without saving much implementation time. Aparte's V1 shell and document rules are small enough to own directly.
 
@@ -20,10 +20,10 @@ The inspected snapshots were:
 Aparte is an accessory-only AppKit process. It has no Dock icon and owns:
 
 - one `NSStatusItem` menu bar button;
-- one Carbon Option-Space hotkey registration, driven by the system event loop rather than polling;
+- one Carbon global hotkey registration, defaulting to Option-Space, driven by the system event loop rather than polling;
 - one reusable 1,032 by 816 point `NSPanel`, fitted down for smaller displays, containing a native, vertically scrolling `NSTextView`;
 - one borderless dimming window per connected display while the pad is visible;
-- one local Markdown document.
+- one working Markdown document and one optional last-cleared recovery file.
 
 The panel sits above the dimming windows. Focus mode animates only window alpha for 140 to 180 milliseconds. It uses no blur, screenshots, screen capture, or repeating animation timer.
 
@@ -60,3 +60,22 @@ The privacy manifest declares no tracking, collected data, tracking domains, or 
 Swift Package Manager builds the executable and `scripts/package-app.sh` assembles the app. The normal local package stays separate from the App Store candidate so sandbox testing does not silently replace the user's existing local document.
 
 The App Store candidate is universal for Apple silicon and Intel Macs. Its entitlements enable only App Sandbox and read-write access to files chosen through a system panel. `scripts/package-mas.sh` can sign the app and installer after the correct Apple Distribution certificate, Mac Installer Distribution certificate, and provisioning profile exist. It does not upload.
+
+## Writing preferences and recovery
+
+The word and character count is hidden by default. It recomputes on editor text
+or selection changes only when enabled. Display zoom uses the native scroll
+view's magnification; it does not rewrite document fonts or Markdown. These
+preferences and the selected global shortcut use local UserDefaults.
+
+Clear writes the current nonempty Markdown atomically to `aparte.recovery.md`
+before erasing the editor. A failed recovery write prevents Clear. Restore is
+one undoable editor replacement; discard removes only the recovery file.
+
+Return uses the small `AparteCore` list-marker parser and one native undoable
+replacement to insert the next item or remove an empty marker. Clipboard export
+uses normalized editor content, with an explicit plain-text option.
+
+Shortcut changes register the replacement before retiring the previous hotkey.
+Launch at login uses Apple's Service Management API and reads its current status
+when the menu is opened. Neither feature introduces polling or a helper process.

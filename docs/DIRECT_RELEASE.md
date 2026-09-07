@@ -14,3 +14,12 @@ make package-direct-dry-run
 ```
 
 Do not use the direct-download identity or entitlements for the Mac App Store package. `make package-app-store-local` and `make package-mas` remain separate targets.
+
+## 1.1.0 packaging verification
+
+The local 1.1.0 candidate passes `make check`, `make check-app-store`, and
+`make check-direct`. Universal packaging builds the arm64 and x86_64 slices
+separately with SwiftPM and combines them with `lipo`. This avoids the compiler
+probe hang observed in Xcode 26.6's multi-architecture Swift Build path. Both
+package validators still require the two architectures and verify the resulting
+app's signature and bundle contents.

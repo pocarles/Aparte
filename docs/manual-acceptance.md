@@ -33,7 +33,7 @@ On September 3, 2026, the locally prepared sandboxed candidate opened with a sep
 
 ## Editing and formatting
 
-- [ ] Plain typing, selection, undo, redo, find, spelling, and keyboard navigation behave like a macOS text editor.
+- [ ] Plain typing, selection, undo, redo, spelling, and keyboard navigation behave like a macOS text editor.
 - [ ] A long document scrolls smoothly with a wheel, trackpad, scrollbar, and keyboard navigation.
 - [ ] The selection bar appears only for a non-empty selection.
 - [ ] Bold, italic, underline, headings, unordered lists, ordered lists, and links work.
@@ -48,7 +48,7 @@ On September 3, 2026, the locally prepared sandboxed candidate opened with a sep
 - [ ] Pasted fonts, sizes, colors, and spacing normalize to Aparte's typography.
 - [ ] Pasting plain text stays plain.
 - [ ] Copy as Markdown produces clean Markdown for the selected text or full document.
-- [ ] Copy selects the full document and places its normal rich and plain representations on the clipboard.
+- [ ] Copy places the full document on the clipboard with rich and plain representations without moving the cursor or changing the selection.
 - [ ] Save and Save Markdown As open a system Save panel with a useful filename derived from the first non-empty line.
 - [ ] Saving writes readable Markdown to a user-selected folder and handles overwrite confirmation through the system panel.
 - [ ] Copy, Save, Clear, and every abbreviated formatting control explain their action on hover.
@@ -76,3 +76,70 @@ On September 3, 2026, the locally prepared sandboxed candidate opened with a sep
 - [ ] Verify Option-Space from another app while the sandboxed candidate is active.
 - [ ] Confirm the app icon is clear in Finder, the menu bar, About Aparte, and at the smallest displayed size.
 - [ ] Capture at least one clean 16:10 screenshot at an Apple-accepted Mac size.
+
+## Writing tools
+
+- [ ] Plain-text copy contains the selected passage, or the whole pad when there is no selection, with no rich clipboard formats.
+- [ ] Click the three-dot footer button; the options card stays inside the pad and matches its appearance. Check light and dark mode.
+- [ ] Choose an option, click outside the card, or press Escape; the card closes and the pad stays open. Outside clicks do not move the cursor or activate the control underneath.
+- [ ] Tab and arrow keys reach the options without moving focus behind the card; Return chooses the focused option. Unavailable recovery actions stay disabled.
+- [ ] Every action has a small shortcut hint. Expand Formatting, Editing, Recovery, and Aparte to check the grouped actions. All labels fit, and expanded content scrolls from top to bottom.
+- [ ] Enabled options use a small filled dot with space before the label. Submenus use a smaller, separate chevron. Opening a submenu closes the previous one; clicking it again closes it.
+- [ ] While scrolling, the scrollbar stays to the right of the shortcut hints without covering them.
+- [ ] Command-/ opens and closes options. Command-Shift-W toggles counts with the card open or closed; formatting shortcuts work even when their group is collapsed.
+- [ ] Command-Option-Delete clears with recovery. Command-Shift-R restores; Command-Option-Shift-R asks before discarding recovery. Cancel leaves the copy intact.
+- [ ] Command-K opens the link field for selected text. Return applies a valid link; Escape cancels the field while keeping the pad open.
+- [ ] Show word and character count, select text including an emoji, then deselect; the counter follows the selection and can be hidden again.
+- [ ] Command-plus, Command-minus, and Command-0 change and reset display size without changing copied or saved formatting; long lines remain readable and scrollable.
+- [ ] Clear, quit, relaunch, and restore the last cleared text; a second nonempty Clear replaces the recovery copy, and an empty Clear preserves it.
+- [ ] Restoring over current writing asks first; Cancel preserves it and Command-Z undoes an accepted restore.
+- [ ] Discard recovery copy removes recovery without changing current writing.
+- [ ] Return continues both bullet and numbered lists; Return on an empty item exits the list, and Undo restores the prior text.
+- [ ] Set a different global shortcut, invoke from another app, relaunch, and verify it persists; reset returns to Option-Space.
+- [ ] An unavailable shortcut reports failure and leaves the previous shortcut working. Escape cancels recording without changing the shortcut.
+- [ ] On an installed signed candidate, turn launch at login on and off and confirm System Settings matches; if macOS requires approval, Aparte says so.
+
+## September 7 local writing-tools verification
+
+The local changes based on `601fd15` passed `make check`: 25 core tests, 59
+packaged AppKit runtime checks, diff validation, and strict signature validation.
+The runtime checks cover plain and rich clipboard output without changing the
+user's clipboard, selection preservation, composed-character counts, visible
+counter geometry, zoom reflow and unchanged export formatting, recoverable Clear,
+restore Undo, list continuation and exit, shortcut persistence and conflicts,
+and launch-item status transitions through an injected service.
+
+The packaged temporary pad was also inspected through the native UI connector.
+The counter rendered in the footer and text at 110% zoom fit inside the pad.
+Through real key events, Return added a bullet, Return on an empty bullet returned
+to normal writing, and selecting "One more thought" changed the counter to
+"Selection: 3 words · 16 characters".
+The shortcut recorder accepted Command-Control-Option-Shift-L in an isolated
+preference suite and visibly reported "Shortcut saved". Test hotkeys were released
+when the test process exited.
+
+No actual login item was enabled. Login after a real sign-out/restart and physical
+global shortcut invocation from another app remain release acceptance checks.
+These local checks do not mark the older release checklist complete.
+
+The subsequent in-window options card passed `make check`, including checks for
+outside-click interception, dismissal before action dispatch, disabled actions,
+keyboard focus containment, restored editor accessibility, and draft/selection
+preservation. Native UI inspection confirmed light and dark appearance, dismissal
+by an outside click or Escape, and closing after toggling the counter. The preview
+used a temporary document and preferences; it did not change the real login item.
+
+The keyboard-shortcut update passed `make check` with 25 core tests and 117 runtime
+checks. Each menu action has a hint, local bindings are unique, and the displayed
+bindings match the native menu. Native key dispatch, recovery shortcuts, collapsed
+formatting shortcuts, and link-field cancellation passed. UI checks confirmed
+readable hints in light and dark appearance, scrolling expanded groups,
+Command-/ opening options, Command-Shift-W closing the card and toggling counts,
+Command-B applying bold from a collapsed group, and Command-K opening the link
+field with Escape returning to the selected text.
+
+The menu spacing refinement passed `make check` with 25 core tests and 122 runtime
+checks. Native UI inspection confirmed the filled state dot and smaller chevrons,
+one expanded submenu at a time, and a clear gap between shortcuts and the visible
+scrollbar in a 600-point-high dark preview. Switching groups after scrolling also
+closed the previous group. The preview used temporary text and preferences.

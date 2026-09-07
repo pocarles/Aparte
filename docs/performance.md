@@ -43,3 +43,31 @@ vmmap -summary "$PID"
 ## Release rule
 
 Remeasure the packaged release after adding any background feature, updater, sync, parser dependency, or persistent observer. Hidden idle CPU must still settle near 0%, and a memory increase needs a concrete explanation.
+
+## September 7 writing tools, local candidate
+
+Measured the uncommitted local candidate based on `601fd15`, built by
+`make check`, on the same macOS 26.5.2 machine. The isolated runtime fixture
+opened a short draft with the counter enabled, hid the pad, and waited without
+polling. It did not open the user's document or change their login items.
+
+Command: `dist/Aparte.app/Contents/MacOS/Aparte --runtime-acceptance --measure-idle-only`.
+After `APARTE_IDLE_READY`, five `ps` samples two seconds apart were:
+
+| Sample | CPU | RSS |
+| --- | ---: | ---: |
+| 1 | 0.0% | 93,040 KiB |
+| 2 | 0.0% | 93,040 KiB |
+| 3 | 0.0% | 93,024 KiB |
+| 4 | 0.0% | 93,104 KiB |
+| 5 | 0.0% | 93,120 KiB |
+
+`vmmap -summary` reported a 21.0 MiB physical footprint and 21.1 MiB peak.
+`lsof -a -p "$PID" -i` reported zero network sockets. These measurements are for
+the short-draft fixture, not a maximum memory bound. The full runtime stress
+fixture, which exercises a long document, zoom, and undo, retained a 118.2 MiB
+physical footprint afterward and peaked at 327.4 MiB, with 0.0% hidden idle CPU.
+
+The new features add no package dependency, repeating timer, network task, or
+helper process. A signed release still needs measurement against its exact
+shipping package.

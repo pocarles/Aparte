@@ -8,6 +8,7 @@ enum AparteMain {
         let application = NSApplication.shared
         if ProcessInfo.processInfo.arguments.contains("--runtime-acceptance") {
             application.setActivationPolicy(.accessory)
+            application.finishLaunching()
             exit(RuntimeAcceptance.run())
         }
         let delegate = AppDelegate()

@@ -78,7 +78,7 @@ final class FormattingBar: NSVisualEffectView, NSPopoverDelegate {
         return box
     }
 
-    private func showLinkPopover() {
+    func showLinkPopover() {
         guard let editor, let linkButton else { return }
         let selection = editor.selectedRange()
         guard selection.length > 0 else { return }
@@ -105,6 +105,7 @@ final class FormattingBar: NSVisualEffectView, NSPopoverDelegate {
         let cancel = ClosureButton(title: "Cancel") { [weak self] in self?.closeLinkPopover() }
         cancel.translatesAutoresizingMaskIntoConstraints = false
         cancel.bezelStyle = .rounded
+        cancel.keyEquivalent = "\u{1b}"
         cancel.toolTip = "Close without adding a link"
         content.addSubview(cancel)
 
@@ -158,10 +159,13 @@ final class FormattingBar: NSVisualEffectView, NSPopoverDelegate {
         editor.window?.makeFirstResponder(editor)
     }
 
-    private func closeLinkPopover() {
+    var isShowingLink: Bool { linkPopover?.isShown == true }
+
+    func closeLinkPopover() {
         linkPopover?.performClose(nil)
         linkPopover = nil
         linkSelection = nil
+        editor?.window?.makeFirstResponder(editor)
     }
 
     private func clipboardLinkSuggestion() -> String? {

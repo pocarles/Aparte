@@ -32,12 +32,20 @@ resources_dir="$contents_dir/Resources"
 build_args=(build --package-path "$project_dir" -c "$configuration" --product Aparte)
 path_args=(build --package-path "$project_dir" -c "$configuration" --show-bin-path)
 if [[ "$universal" == "1" ]]; then
-    build_args+=(--arch arm64 --arch x86_64)
-    path_args+=(--arch arm64 --arch x86_64)
+    # Build each slice with SwiftPM, avoiding Swift Build's multi-architecture
+    # compiler-probe deadlock on recent Xcode versions.
+    architecture_binaries=()
+    for architecture in arm64 x86_64; do
+        swift "${build_args[@]}" --arch "$architecture"
+        architecture_path="$(swift "${path_args[@]}" --arch "$architecture")"
+        architecture_binaries+=("$architecture_path/Aparte")
+    done
+    binary_path="$project_dir/.build/Aparte-universal"
+    lipo -create "${architecture_binaries[@]}" -output "$binary_path"
+else
+    swift "${build_args[@]}"
+    binary_path="$(swift "${path_args[@]}")/Aparte"
 fi
-
-swift "${build_args[@]}"
-binary_path="$(swift "${path_args[@]}")/Aparte"
 
 rm -rf "$app_dir"
 mkdir -p "$macos_dir" "$resources_dir"

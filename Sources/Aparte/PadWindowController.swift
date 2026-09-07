@@ -22,11 +22,22 @@ final class PadWindowController: NSObject, NSTextViewDelegate {
     private let rootView: PadBackgroundView
     private let formattingBar: FormattingBar
     private weak var saveButton: NSButton?
+    private let countLabel = NSTextField(labelWithString: "")
+    private let defaults: UserDefaults
+    private let optionsMenu: () -> NSMenu
+    private var zoom: CGFloat = 1
+    private var optionsOverlay: OptionsOverlayView?
+    var isOptionsMenuOpen: Bool { optionsOverlay != nil }
+    var showsCounts: Bool { defaults.bool(forKey: "showWordCount") }
+
     var onDismiss: (() -> Void)?
 
     var isVisible: Bool { panel.isVisible }
 
-    init(document: DocumentController) {
+    init(document: DocumentController, defaults: UserDefaults = .standard,
+         optionsMenu: @escaping () -> NSMenu = { MenuBarController.makeOptionsMenu(target: NSApp.delegate as? AppDelegate) }) {
+        self.optionsMenu = optionsMenu
+        self.defaults = defaults
         self.document = document
         self.panel = ApartePanel(
             contentRect: NSRect(origin: .zero, size: Self.preferredSize),
@@ -41,6 +52,9 @@ final class PadWindowController: NSObject, NSTextViewDelegate {
         configurePanel()
         configureEditor()
         configureContent()
+        let savedZoom = defaults.double(forKey: "textZoom")
+        setZoom(savedZoom == 0 ? 1 : savedZoom)
+        updateCounts()
     }
 
     func show() {
@@ -58,6 +72,8 @@ final class PadWindowController: NSObject, NSTextViewDelegate {
     }
 
     func hide() {
+        formattingBar.closeLinkPopover()
+        closeOptions()
         formattingBar.isHidden = true
         panel.orderOut(nil)
     }
@@ -76,23 +92,175 @@ final class PadWindowController: NSObject, NSTextViewDelegate {
             ),
             display: true
         )
+        layoutZoomedEditor()
     }
 
     func copyMarkdown() {
         editor.copyAsMarkdown(nil)
     }
 
-    @objc private func copyAll() {
+    @objc func copyAll() {
         panel.makeFirstResponder(editor)
-        editor.selectAll(nil)
-        editor.copy(nil)
-        updateFormattingBar()
+        editor.copyAllPreservingSelection()
     }
 
-    @objc private func clearPad() {
-        panel.makeFirstResponder(editor)
-        editor.clearAll(nil)
+    @objc private func showOptions(_ sender: NSButton) {
+        toggleOptions()
+    }
+
+    func toggleOptions() {
+        guard !isOptionsMenuOpen else { closeOptions(); return }
+        formattingBar.closeLinkPopover()
+        presentOptions(optionsMenu())
+    }
+
+    func dismissTransientUI() -> Bool {
+        if isOptionsMenuOpen { closeOptions(); return true }
+        if formattingBar.isShowingLink { formattingBar.closeLinkPopover(); return true }
+        return false
+    }
+
+    func performOptionsKeyEquivalent(_ event: NSEvent) -> Bool {
+        guard panel.isKeyWindow, let optionsOverlay else { return false }
+        return optionsOverlay.performKeyEquivalent(with: event)
+    }
+
+    func presentOptions(_ menu: NSMenu) {
+        closeOptions()
+        let overlay = OptionsOverlayView(menu: menu)
+        overlay.frame = rootView.bounds
+        overlay.autoresizingMask = [.width, .height]
+        overlay.onDismiss = { [weak self] in self?.closeOptions() }
+        overlay.onChoose = { [weak self] item in
+            guard let self, item.isEnabled else { return }
+            closeOptions()
+            guard item.action != #selector(AppDelegate.toggleOptions) else { return }
+            if let action = item.action { NSApp.sendAction(action, to: item.target, from: item) }
+        }
+        optionsOverlay = overlay
         formattingBar.isHidden = true
+        rootView.addSubview(overlay)
+        rootView.optionsAccessibilityView = overlay
+        NSAccessibility.post(element: panel, notification: .layoutChanged)
+        rootView.layoutSubtreeIfNeeded()
+        panel.makeFirstResponder(overlay)
+    }
+
+    func closeOptions() {
+        guard let overlay = optionsOverlay else { return }
+        optionsOverlay = nil
+        overlay.removeFromSuperview()
+        rootView.optionsAccessibilityView = nil
+        NSAccessibility.post(element: panel, notification: .layoutChanged)
+        panel.makeFirstResponder(editor)
+    }
+
+    var optionsOverlayForRuntimeCheck: OptionsOverlayView? { optionsOverlay }
+    var linkIsVisibleForRuntimeCheck: Bool { formattingBar.isShowingLink }
+
+    @objc func clearPad() {
+        panel.makeFirstResponder(editor)
+        do {
+            try document.backupBeforeClear()
+            editor.clearAll(nil)
+            formattingBar.isHidden = true
+        } catch {
+            presentError(error, message: "Your text was not cleared because its recovery copy could not be saved.")
+        }
+    }
+
+    func copyPlainText() { editor.copyAsPlainText(nil) }
+
+    func toggleCounts() {
+        defaults.set(!showsCounts, forKey: "showWordCount")
+        updateCounts()
+    }
+
+    func zoomIn() { setZoom(zoom + 0.1) }
+    func zoomOut() { setZoom(zoom - 0.1) }
+    func resetZoom() { setZoom(1) }
+
+    private func setZoom(_ value: CGFloat) {
+        zoom = min(1.8, max(0.8, value))
+        guard let scrollView = editor.enclosingScrollView else { return }
+        scrollView.minMagnification = 0.8
+        scrollView.maxMagnification = 1.8
+        scrollView.magnification = zoom
+        layoutZoomedEditor()
+        editor.scrollRangeToVisible(editor.selectedRange())
+        defaults.set(Double(zoom), forKey: "textZoom")
+        formattingBar.isHidden = true
+    }
+
+    private func layoutZoomedEditor() {
+        guard let scrollView = editor.enclosingScrollView else { return }
+        let visibleSize = scrollView.contentView.bounds.size
+        // Magnification scales document coordinates. Reflow to the visible width
+        // and keep the pad's physical margins constant as text grows.
+        editor.textContainerInset = NSSize(width: min(200, visibleSize.width * zoom * 0.2) / zoom, height: 120 / zoom)
+        editor.minSize = NSSize(width: 0, height: visibleSize.height)
+        editor.maxSize = NSSize(width: visibleSize.width, height: .greatestFiniteMagnitude)
+        editor.autoresizingMask = []
+        editor.setFrameSize(NSSize(width: visibleSize.width, height: max(visibleSize.height, editor.frame.height)))
+        editor.sizeToFit()
+    }
+
+    private func updateCounts() {
+        countLabel.isHidden = !showsCounts
+        guard showsCounts else { return }
+        let selection = editor.selectedRange()
+        let source = editor.string as NSString
+        let selected = selection.length > 0 && NSMaxRange(selection) <= source.length
+        let text = selected ? source.substring(with: selection) : editor.string
+        var words = 0
+        text.enumerateSubstrings(in: text.startIndex..<text.endIndex, options: [.byWords, .substringNotRequired]) {
+            _, _, _, _ in words += 1
+        }
+        let prefix = selected ? "Selection: " : ""
+        countLabel.stringValue = "\(prefix)\(words) \(words == 1 ? "word" : "words") · \(text.count) \(text.count == 1 ? "character" : "characters")"
+        countLabel.toolTip = "Characters include spaces and line breaks. Select text to count only that passage."
+    }
+
+    var hasRecovery: Bool { document.hasRecovery }
+
+    func restoreLastCleared() {
+        do {
+            guard let recovered = try document.loadRecovery() else { return }
+            if !editor.string.isEmpty {
+                let alert = NSAlert()
+                alert.messageText = "Replace the current pad with the last cleared text?"
+                alert.informativeText = "You can undo this replacement with Command-Z. Save the current pad first if you want to keep a separate copy."
+                alert.addButton(withTitle: "Restore")
+                alert.addButton(withTitle: "Cancel")
+                alert.window.level = NSWindow.Level(rawValue: NSWindow.Level.popUpMenu.rawValue + 1)
+                guard alert.runModal() == .alertFirstButtonReturn else { return }
+            }
+            editor.replaceAll(with: recovered)
+            document.saveNow()
+            if let error = document.lastSaveError { throw error }
+            updateCounts()
+        } catch {
+            presentError(error, message: "Aparte could not restore the last cleared text.")
+        }
+    }
+
+    func discardRecovery() {
+        let alert = NSAlert()
+        alert.messageText = "Discard the recovery copy?"
+        alert.informativeText = "This removes the saved copy of your last cleared text. The current pad stays as it is."
+        alert.addButton(withTitle: "Discard recovery copy")
+        alert.addButton(withTitle: "Cancel")
+        alert.window.level = NSWindow.Level(rawValue: NSWindow.Level.popUpMenu.rawValue + 1)
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        do { try document.discardRecovery() }
+        catch { presentError(error, message: "Aparte could not discard the recovery copy.") }
+    }
+
+    private func presentError(_ error: Error, message: String) {
+        let alert = NSAlert(error: error)
+        alert.messageText = message
+        alert.window.level = NSWindow.Level(rawValue: NSWindow.Level.popUpMenu.rawValue + 1)
+        alert.runModal()
     }
 
     @objc func saveMarkdownAs() {
@@ -155,6 +323,7 @@ final class PadWindowController: NSObject, NSTextViewDelegate {
         let rendered = MarkdownCodec.render(markdown)
         editor.textStorage?.setAttributedString(rendered)
         document.textDidChange(rendered)
+        updateCounts()
     }
 
     func selectForRuntimeCheck(_ range: NSRange) {
@@ -175,14 +344,27 @@ final class PadWindowController: NSObject, NSTextViewDelegate {
 
     func clearForRuntimeCheck() {
         editor.undoManager?.removeAllActions()
-        editor.clearAll(nil)
+        clearPad()
     }
+
+    var editorForRuntimeCheck: EditorTextView { editor }
+    var countForRuntimeCheck: String { countLabel.stringValue }
+    var countIsVisibleForRuntimeCheck: Bool {
+        rootView.layoutSubtreeIfNeeded()
+        return !countLabel.isHidden && countLabel.frame.width > 10 && countLabel.frame.height > 5
+            && rootView.bounds.contains(countLabel.frame) && !countLabel.hasAmbiguousLayout
+    }
+    var zoomForRuntimeCheck: CGFloat { editor.enclosingScrollView?.magnification ?? 1 }
 
     func undoForRuntimeCheck() {
         editor.undoManager?.undo()
     }
 
     func simulateEscapeForRuntimeCheck() {
+        simulateKeyForRuntimeCheck(keyCode: 53, characters: "\u{1b}")
+    }
+
+    func simulateKeyForRuntimeCheck(keyCode: UInt16, characters: String) {
         guard let event = NSEvent.keyEvent(
             with: .keyDown,
             location: .zero,
@@ -190,21 +372,23 @@ final class PadWindowController: NSObject, NSTextViewDelegate {
             timestamp: 0,
             windowNumber: panel.windowNumber,
             context: nil,
-            characters: "\u{1b}",
-            charactersIgnoringModifiers: "\u{1b}",
+            characters: characters,
+            charactersIgnoringModifiers: characters,
             isARepeat: false,
-            keyCode: 53
+            keyCode: keyCode
         ) else { return }
-        editor.keyDown(with: event)
+        panel.firstResponder?.keyDown(with: event)
     }
 
     func textDidChange(_ notification: Notification) {
         guard let textStorage = editor.textStorage else { return }
         document.textDidChange(textStorage)
+        updateCounts()
     }
 
     func textViewDidChangeSelection(_ notification: Notification) {
         updateFormattingBar()
+        updateCounts()
     }
 
     private func configurePanel() {
@@ -236,8 +420,16 @@ final class PadWindowController: NSObject, NSTextViewDelegate {
         editor.typingAttributes = AparteTypography.baseAttributes
         editor.linkTextAttributes = [.foregroundColor: NSColor.linkColor, .underlineStyle: NSUnderlineStyle.single.rawValue]
         editor.textStorage?.setAttributedString(document.attributedText)
-        editor.onDismiss = { [weak self] in self?.onDismiss?() }
+        editor.onDismiss = { [weak self] in
+            guard let self else { return }
+            if dismissTransientUI() { return }
+            else { onDismiss?() }
+        }
         editor.onSelectionChanged = { [weak self] in self?.updateFormattingBar() }
+        editor.onAddLink = { [weak self] in
+            self?.updateFormattingBar()
+            self?.formattingBar.showLinkPopover()
+        }
     }
 
     private func configureContent() {
@@ -256,7 +448,11 @@ final class PadWindowController: NSObject, NSTextViewDelegate {
         copyAllButton.contentTintColor = .secondaryLabelColor
         copyAllButton.image = NSImage(systemSymbolName: "doc.on.doc", accessibilityDescription: nil)
         copyAllButton.imagePosition = .imageLeading
-        copyAllButton.toolTip = "Select all text and copy it"
+        copyAllButton.toolTip = "Copy the whole pad without moving the cursor. More copy options are in the three-dot menu."
+        let copyMenu = NSMenu()
+        copyMenu.addItem(MenuCommand.copyPlain.item(target: NSApp.delegate as? NSObject))
+        copyMenu.addItem(MenuCommand.copyMarkdown.item(target: NSApp.delegate as? NSObject))
+        copyAllButton.menu = copyMenu
         copyAllButton.setAccessibilityLabel("Copy all")
         rootView.addSubview(copyAllButton)
 
@@ -281,9 +477,25 @@ final class PadWindowController: NSObject, NSTextViewDelegate {
         clearButton.contentTintColor = .secondaryLabelColor
         clearButton.image = NSImage(systemSymbolName: "eraser", accessibilityDescription: nil)
         clearButton.imagePosition = .imageLeading
-        clearButton.toolTip = "Clear the pad. Undo with Command-Z."
+        clearButton.toolTip = "Clear the pad. Undo with Command-Z, or restore the last cleared text from the three-dot menu."
         clearButton.setAccessibilityLabel("Clear pad")
         rootView.addSubview(clearButton)
+
+        let optionsButton = NSButton(image: NSImage(systemSymbolName: "ellipsis", accessibilityDescription: "More options")!, target: self, action: #selector(showOptions(_:)))
+        optionsButton.translatesAutoresizingMaskIntoConstraints = false
+        optionsButton.isBordered = false
+        optionsButton.bezelStyle = .inline
+        optionsButton.contentTintColor = .secondaryLabelColor
+        optionsButton.toolTip = "More options"
+        optionsButton.setAccessibilityLabel("More options")
+        rootView.addSubview(optionsButton)
+
+        countLabel.translatesAutoresizingMaskIntoConstraints = false
+        countLabel.font = .systemFont(ofSize: 11)
+        countLabel.textColor = .secondaryLabelColor
+        countLabel.lineBreakMode = .byTruncatingTail
+        countLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        rootView.addSubview(countLabel)
 
         formattingBar.isHidden = true
         rootView.addSubview(formattingBar)
@@ -299,6 +511,13 @@ final class PadWindowController: NSObject, NSTextViewDelegate {
             saveButton.centerYAnchor.constraint(equalTo: copyAllButton.centerYAnchor),
             clearButton.leadingAnchor.constraint(equalTo: saveButton.trailingAnchor, constant: 12),
             clearButton.centerYAnchor.constraint(equalTo: saveButton.centerYAnchor),
+            countLabel.leadingAnchor.constraint(greaterThanOrEqualTo: clearButton.trailingAnchor, constant: 16),
+            countLabel.trailingAnchor.constraint(equalTo: optionsButton.leadingAnchor, constant: -10),
+            optionsButton.trailingAnchor.constraint(equalTo: rootView.trailingAnchor, constant: -12),
+            optionsButton.centerYAnchor.constraint(equalTo: copyAllButton.centerYAnchor),
+            optionsButton.widthAnchor.constraint(equalToConstant: 28),
+            optionsButton.heightAnchor.constraint(equalToConstant: 20),
+            countLabel.centerYAnchor.constraint(equalTo: copyAllButton.centerYAnchor),
         ])
 
         rootView.layoutSubtreeIfNeeded()
@@ -333,7 +552,7 @@ final class PadWindowController: NSObject, NSTextViewDelegate {
 
     private func updateFormattingBar() {
         let selection = editor.selectedRange()
-        guard selection.length > 0, panel.isVisible else {
+        guard selection.length > 0, panel.isVisible, !isOptionsMenuOpen else {
             formattingBar.isHidden = true
             return
         }
@@ -372,7 +591,14 @@ private final class ApartePanel: NSPanel {
 
 @MainActor
 private final class PadBackgroundView: NSView {
+    weak var optionsAccessibilityView: NSView?
     override var isOpaque: Bool { false }
+
+    // AppKit owns the heterogeneous accessibility tree; preserve its default filtering when the card closes.
+    override func accessibilityChildren() -> [Any]? {
+        if let optionsAccessibilityView { return [optionsAccessibilityView] }
+        return super.accessibilityChildren()
+    }
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()

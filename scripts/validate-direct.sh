@@ -2,8 +2,8 @@
 set -euo pipefail
 
 mode=dry-run
-version=1.0.0
-build_number=1
+version=1.1.0
+build_number=6
 usage() { echo "Usage: scripts/validate-direct.sh [--mode dry-run|release] [--version X.Y.Z] [--build N] APP_OR_DMG"; }
 while (($# > 0)); do
     case "$1" in

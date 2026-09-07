@@ -12,6 +12,10 @@ final class DocumentController {
         MarkdownCodec.markdown(from: attributedText)
     }
 
+    var hasRecovery: Bool {
+        store.hasRecovery
+    }
+
     init(store: PersistenceStore? = nil) throws {
         self.store = try store ?? PersistenceStore()
         let saved = try self.store.load()
@@ -45,5 +49,17 @@ final class DocumentController {
             lastSaveError = error
         }
     }
-}
 
+    func backupBeforeClear() throws {
+        try store.backupBeforeClear(markdown)
+    }
+
+    func loadRecovery() throws -> NSAttributedString? {
+        guard let markdown = try store.loadRecovery() else { return nil }
+        return MarkdownCodec.render(markdown)
+    }
+
+    func discardRecovery() throws {
+        try store.discardRecovery()
+    }
+}

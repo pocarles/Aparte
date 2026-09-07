@@ -8,12 +8,12 @@ on:
       version:
         description: Version without v (dry-run)
         required: true
-        default: 1.0.0
+        default: 1.1.0
         type: string
       build_number:
         description: Positive bundle build number (dry-run)
         required: true
-        default: "1"
+        default: "6"
         type: string
 
 permissions:
