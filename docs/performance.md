@@ -71,3 +71,19 @@ physical footprint afterward and peaked at 327.4 MiB, with 0.0% hidden idle CPU.
 The new features add no package dependency, repeating timer, network task, or
 helper process. A signed release still needs measurement against its exact
 shipping package.
+
+## 1.1.0 published download
+
+Measured the signed GitHub `v1.1.0` download, version 1.1.0 build 6, from
+release commit `4792204`. DMG SHA-256:
+`d3331fdd72a8e0f6711a5836a5490b03b7afb4cefa0b1578b5017962697efaf8`.
+
+Command: `dist/released-1.1.0/Aparte.app/Contents/MacOS/Aparte --runtime-acceptance --measure-idle-only`.
+After `APARTE_IDLE_READY`, five `ps` samples two seconds apart each reported
+0.0% CPU and 91,552 KiB RSS. `vmmap -summary` reported a 19.9 MiB physical
+footprint and 20.1 MiB peak. `lsof -a -p "$PID" -i` reported zero network sockets.
+The short-draft fixture and limits described above still apply.
+
+The downloaded app also passed all 122 runtime acceptance checks. The DMG
+passed checksum verification, strict signature verification, stapled
+notarization validation, and Gatekeeper assessment of both the image and app.
