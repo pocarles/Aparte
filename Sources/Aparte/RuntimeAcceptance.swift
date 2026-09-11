@@ -155,9 +155,55 @@ enum RuntimeAcceptance {
             check(overlays.runtimeWindowCount == NSScreen.screens.count, "overlay-per-screen")
             check(overlays.runtimeWindowsArePassive, "overlays-passive-no-blur-window")
 
+            let footerButtons = pad.actionButtonsForRuntimeCheck
+            check(footerButtons.count == 3, "footer-has-three-feedback-buttons")
+            if let event = NSEvent.enterExitEvent(with: .mouseEntered, location: .zero, modifierFlags: [],
+                                                 timestamp: 0, windowNumber: pad.editorForRuntimeCheck.window?.windowNumber ?? 0,
+                                                 context: nil, eventNumber: 0, trackingNumber: 0, userData: nil) {
+                func renderedButton(_ button: NSButton) -> Data? {
+                    guard let bitmap = button.bitmapImageRepForCachingDisplay(in: button.bounds) else { return nil }
+                    button.cacheDisplay(in: button.bounds, to: bitmap)
+                    return bitmap.representation(using: .png, properties: [:])
+                }
+                for (index, button) in footerButtons.enumerated() {
+                    let originalAppearance = button.appearance
+                    for (appearance, name) in [(NSAppearance.Name.aqua, "light"), (.darkAqua, "dark")] {
+                        button.appearance = NSAppearance(named: appearance)
+                        button.mouseExited(with: event)
+                        button.highlight(false)
+                        let idle = renderedButton(button)
+                        button.mouseEntered(with: event)
+                        let hovered = renderedButton(button)
+                        button.highlight(true)
+                        let pressed = renderedButton(button)
+                        check(idle != nil && hovered != idle && pressed != hovered, "footer-\(index)-\(name)-renders-distinct-hover-and-press")
+                        button.highlight(false)
+                        button.mouseExited(with: event)
+                        check(renderedButton(button) == idle, "footer-\(index)-\(name)-returns-to-idle-after-pointer-exit")
+                    }
+                    button.appearance = originalAppearance
+                    check(button.acceptsFirstResponder && !button.mouseDownCanMoveWindow, "footer-\(index)-keeps-keyboard-access-and-does-not-drag-pad")
+                    let initialFrames = footerButtons.map(\.frame)
+                    for (title, symbol) in [(["Copied", "Saved", "Cleared"][index], "checkmark"),
+                                            ("Empty", "exclamationmark.circle"), ("Failed", "exclamationmark.circle")] {
+                        button.acknowledge(title, symbol: symbol, detail: "The action failed.")
+                        button.superview?.layoutSubtreeIfNeeded()
+                        check(footerButtons.map(\.frame) == initialFrames, "footer-\(index)-\(title)-feedback-keeps-all-button-frames")
+                    }
+                    check(button.accessibilityValue() as? String == "The action failed.", "footer-\(index)-feedback-has-accessible-detail")
+                    button.resetFeedback()
+                    button.superview?.layoutSubtreeIfNeeded()
+                    check(footerButtons.map(\.frame) == initialFrames && button.accessibilityValue() == nil,
+                          "footer-\(index)-reset-keeps-layout-and-clears-accessible-detail")
+                }
+                check(pad.runtimeSnapshot().editorOwnsFocus, "footer-hover-and-feedback-preserve-editor-focus")
+            } else { failed.append("footer-pointer-event-created") }
+
             let markdown = """
             # Runtime acceptance
+
             A **bold** and *italic* line with <u>underlining</u> and a [link](https://example.com).
+
             - First item
             1. Second item
             """
@@ -184,6 +230,7 @@ enum RuntimeAcceptance {
             pad.clearForRuntimeCheck()
             drainRunLoop(for: 0.05)
             check(document.markdown.isEmpty, "clear-empties-document")
+            check(footerButtons.last?.title == "Cleared" && pad.runtimeSnapshot().editorOwnsFocus, "clear-acknowledges-success-and-keeps-editor-focus")
             pad.undoForRuntimeCheck()
             drainRunLoop(for: 0.05)
             check(document.markdown == recoverableMarkdown, "single-undo-restores-cleared-document")
@@ -202,6 +249,10 @@ enum RuntimeAcceptance {
             pad.clearForRuntimeCheck()
             let recoveryAfterEmptyClear = try store.loadRecovery()
             check(recoveryAfterEmptyClear == recoverableMarkdown, "empty-clear-preserves-recovery")
+            check(footerButtons.last?.title == "Empty", "empty-clear-acknowledged")
+            pad.saveMarkdownAs()
+            check(footerButtons.count == 3 && footerButtons[1].title == "Empty" && pad.runtimeSnapshot().editorOwnsFocus,
+                  "empty-save-acknowledged-without-losing-focus")
             try document.discardRecovery()
             check(!pad.hasRecovery && document.markdown.isEmpty, "discard-keeps-current-pad")
 
@@ -216,14 +267,66 @@ enum RuntimeAcceptance {
             check(pad.countForRuntimeCheck == "Selection: 1 word · 5 characters", "counter-follows-selection")
             let clipboard = NSPasteboard.withUniqueName()
             defer { clipboard.releaseGlobally() }
+            pad.copyAllForRuntimeCheck(to: clipboard)
+            check(footerButtons.first?.title == "Copied" && clipboard.string(forType: .string) == editor.string,
+                  "footer-copy-acknowledges-written-clipboard")
+            check(editor.selectedRange() == NSRange(location: 6, length: 5) && pad.runtimeSnapshot().editorOwnsFocus,
+                  "footer-copy-preserves-selection-and-editor-focus")
+            let copiedText = clipboard.string(forType: .string)
+            pad.setMarkdownForRuntimeCheck("")
+            pad.copyAllForRuntimeCheck(to: clipboard)
+            check(footerButtons.first?.title == "Empty" && clipboard.string(forType: .string) == copiedText,
+                  "empty-copy-acknowledged-without-overwriting-clipboard")
+            drainRunLoop(for: 1)
+            pad.setMarkdownForRuntimeCheck("A second copy")
+            pad.copyAllForRuntimeCheck(to: clipboard)
+            drainRunLoop(for: 1.8)
+            check(footerButtons.first?.title == "Copied" && clipboard.string(forType: .string) == "A second copy",
+                  "repeated-copy-feedback-outlasts-the-previous-reset")
+            drainRunLoop(for: 0.3)
+            check(footerButtons.map(\.title) == ["Copy", "Save", "Clear"], "footer-feedback-resets-without-polling")
+            pad.setMarkdownForRuntimeCheck("Hello **world** 👩🏽‍💻")
+            editor.setSelectedRange(NSRange(location: 6, length: 5))
             editor.copyPlainText(to: clipboard)
             check(clipboard.string(forType: .string) == "world" && clipboard.data(forType: .rtf) == nil, "copy-plain-selection-without-formatting")
             editor.copyAllPreservingSelection(to: clipboard)
-            check(clipboard.string(forType: .string) == editor.string && clipboard.data(forType: .rtf) != nil, "copy-all-rich-and-plain")
+            check(clipboard.string(forType: .string) == editor.string && clipboard.data(forType: .html) != nil && clipboard.data(forType: .rtf) == nil, "copy-all-rich-and-plain")
             check(editor.selectedRange() == NSRange(location: 6, length: 5), "copy-all-preserves-selection")
             editor.setSelectedRange(NSRange(location: 3, length: 0))
             editor.copyPlainText(to: clipboard)
             check(clipboard.string(forType: .string) == editor.string && editor.selectedRange().location == 3, "copy-plain-whole-pad-preserves-cursor")
+
+            pad.setMarkdownForRuntimeCheck("First paragraph")
+            editor.setSelectedRange(NSRange(location: editor.string.utf16.count, length: 0))
+            editor.insertNewline(nil)
+            editor.insertText("Second paragraph", replacementRange: editor.selectedRange())
+            check(editor.string == "First paragraph\nSecond paragraph", "return-creates-one-paragraph-boundary")
+            let paragraphStyle = editor.attributedString().attribute(.paragraphStyle, at: 16, effectiveRange: nil) as? NSParagraphStyle
+            check(paragraphStyle?.paragraphSpacing == 30, "return-applies-visible-paragraph-spacing")
+            let footerParagraphSelection = NSRange(location: 6, length: 5)
+            editor.setSelectedRange(footerParagraphSelection)
+            clipboard.clearContents()
+            pad.copyAllForRuntimeCheck(to: clipboard)
+            check(footerButtons.first?.title == "Copied"
+                  && clipboard.string(forType: .string) == "First paragraph\n\nSecond paragraph",
+                  "footer-paragraph-copy-acknowledges-email-ready-clipboard")
+            check(clipboard.string(forType: .html)?.contains("<p>First paragraph</p><p>Second paragraph</p>") == true,
+                  "footer-paragraph-copy-includes-rich-html")
+            check(editor.selectedRange() == footerParagraphSelection && pad.runtimeSnapshot().editorOwnsFocus,
+                  "footer-paragraph-copy-preserves-selection-and-editor-focus")
+            let paragraphSelection = NSRange(location: 0, length: editor.string.utf16.count)
+            editor.setSelectedRange(paragraphSelection)
+            editor.copySelection(to: clipboard)
+            check(clipboard.string(forType: .string) == "First paragraph\n\nSecond paragraph", "selection-copy-is-email-ready")
+            let copiedHTML = clipboard.string(forType: .html) ?? ""
+            check(copiedHTML.contains("<p>First paragraph</p><p>Second paragraph</p>") && !copiedHTML.contains("font-") && clipboard.data(forType: .rtf) == nil,
+                  "rich-copy-inherits-destination-typography")
+            check(editor.selectedRange() == paragraphSelection && pad.runtimeSnapshot().editorOwnsFocus,
+                  "paragraph-copy-preserves-selection-and-focus")
+            editor.setSelectedRange(NSRange(location: 3, length: 0))
+            editor.copyPlainText(to: clipboard)
+            check(clipboard.string(forType: .string) == "First paragraph\n\nSecond paragraph" && clipboard.data(forType: .html) == nil,
+                  "plain-copy-has-ready-to-send-paragraphs")
 
             let beforeZoom = document.markdown
             let beforeFonts = editor.attributedString()
@@ -364,12 +467,7 @@ enum RuntimeAcceptance {
             probeMenu.removeAllItems()
 
             pad.show()
-            NSApp.activate(ignoringOtherApps: true)
-            let activationDeadline = Date().addingTimeInterval(2)
-            while !pad.runtimeSnapshot().isKey && Date() < activationDeadline {
-                runInteractivePreview(for: 0.05)
-            }
-            check(pad.runtimeSnapshot().isKey && pad.runtimeSnapshot().editorOwnsFocus, "shortcut-checks-start-with-editor-focus")
+            check(focusEditorForShortcutChecks(editor), "shortcut-checks-start-with-editor-focus")
             pad.setMarkdownForRuntimeCheck("Keyboard checks")
             editor.setSelectedRange(NSRange(location: 0, length: editor.string.utf16.count))
             let headingEvent = shortcutEvent("1", modifiers: [.command, .option], window: editor.window!)
@@ -476,6 +574,25 @@ enum RuntimeAcceptance {
                 NSApp.updateWindows()
             }
         }
+    }
+
+    private static func focusEditorForShortcutChecks(_ editor: NSTextView) -> Bool {
+        guard let window = editor.window else { return false }
+        let deadline = Date().addingTimeInterval(2)
+        repeat {
+            // This harness runs outside NSApplication.run(). Rapid hide/show and
+            // menu replacement can leave activation events queued. Process them
+            // before checking the native responder chain, and reacquire focus if
+            // a deferred deactivation overtook the previous activation request.
+            NSApp.activate(ignoringOtherApps: true)
+            window.makeKeyAndOrderFront(nil)
+            window.makeFirstResponder(editor)
+            runInteractivePreview(for: 0.05)
+            if NSApp.isActive && NSApp.keyWindow === window && window.firstResponder === editor {
+                return true
+            }
+        } while Date() < deadline
+        return false
     }
 
     private static func shortcutEvent(_ key: String, modifiers: NSEvent.ModifierFlags, window: NSWindow) -> NSEvent {

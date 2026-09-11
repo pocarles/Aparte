@@ -8,12 +8,12 @@ on:
       version:
         description: Version without v (dry-run)
         required: true
-        default: 1.1.0
+        default: 1.2.0
         type: string
       build_number:
         description: Positive bundle build number (dry-run)
         required: true
-        default: "6"
+        default: "7"
         type: string
 
 permissions:
@@ -45,7 +45,11 @@ jobs:
           git merge-base --is-ancestor "$GITHUB_SHA" origin/main || { echo "Tag commit is not contained in origin/main" >&2; exit 1; }
           if [[ "$EVENT_NAME" == push ]]; then
             [[ "$REF_NAME" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || exit 64
-            version=${REF_NAME#v}; build_number=$GITHUB_RUN_NUMBER
+            version=${REF_NAME#v}
+            bundle_version=$(plutil -extract CFBundleShortVersionString raw -o - Support/Info.plist)
+            [[ "$version" == "$bundle_version" ]] || { echo "Tag version does not match Info.plist" >&2; exit 64; }
+            build_number=$(plutil -extract CFBundleVersion raw -o - Support/Info.plist)
+            [[ "$build_number" =~ ^[1-9][0-9]*$ ]] || exit 64
           else
             [[ "$INPUT_VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || exit 64
             [[ "$INPUT_BUILD" =~ ^[1-9][0-9]*$ ]] || exit 64

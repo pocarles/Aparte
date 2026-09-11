@@ -45,40 +45,23 @@ public enum MarkdownCodec {
         if output.length == 0 {
             output.append(NSAttributedString(string: "", attributes: AparteTypography.baseAttributes))
         }
-        return output
+        return ParagraphFormatting.editorText(from: output)
     }
 
     public static func markdown(from attributedString: NSAttributedString) -> String {
         guard attributedString.length > 0 else { return "" }
         let source = attributedString.string as NSString
-        var lines: [String] = []
+        var result = ""
+        var previousWasList = false
 
-        source.enumerateSubstrings(
-            in: NSRange(location: 0, length: source.length),
-            options: [.byParagraphs, .substringNotRequired]
-        ) { _, paragraphRange, _, _ in
-            var contentRange = paragraphRange
-            while contentRange.length > 0 {
-                let last = NSMaxRange(contentRange) - 1
-                let finalCharacterRange = source.rangeOfComposedCharacterSequence(at: last)
-                let finalCharacter = source.substring(with: finalCharacterRange)
-                guard finalCharacter.unicodeScalars.allSatisfy(CharacterSet.newlines.contains) else {
-                    break
-                }
-                contentRange.length -= finalCharacterRange.length
-            }
-
-            let headingLevel = integerAttribute(.aparteHeadingLevel, in: attributedString, range: contentRange)
-            let listKind = stringAttribute(.aparteListKind, in: attributedString, range: contentRange)
-            var visibleRange = contentRange
+        for block in ParagraphFormatting.blocks(in: attributedString) {
+            let headingLevel = block.headingLevel
+            var visibleRange = block.range
             var prefix = headingLevel > 0 ? String(repeating: "#", count: headingLevel) + " " : ""
-
-            if listKind == AparteListKind.unordered.rawValue {
-                prefix = "- "
-                visibleRange = droppingListMarker(in: source, range: contentRange)
-            } else if listKind == AparteListKind.ordered.rawValue {
-                prefix = "1. "
-                visibleRange = droppingListMarker(in: source, range: contentRange)
+            if let marker = block.marker {
+                prefix = marker.kind == .unordered ? "- " : "\(marker.number ?? 1). "
+                visibleRange.location += marker.utf16Length
+                visibleRange.length -= marker.utf16Length
             }
 
             let inline = serializeInline(
@@ -86,13 +69,17 @@ public enum MarkdownCodec {
                 range: visibleRange,
                 ignoreBold: headingLevel > 0
             )
-            lines.append(prefix + inline)
+            if !result.isEmpty {
+                result += previousWasList && block.marker != nil ? "\n" : "\n\n"
+            }
+            result += prefix + inline
+            previousWasList = block.marker != nil
         }
 
-        if source.hasSuffix("\n") {
-            lines.append("")
+        if !result.isEmpty, source.hasSuffix("\n") {
+            result += "\n"
         }
-        return lines.joined(separator: "\n")
+        return result
     }
 
     private static func parseBlock(_ line: String) -> (
@@ -207,34 +194,4 @@ public enum MarkdownCodec {
         text.replacingOccurrences(of: "\\", with: "\\\\")
     }
 
-    private static func integerAttribute(
-        _ key: NSAttributedString.Key,
-        in attributedString: NSAttributedString,
-        range: NSRange
-    ) -> Int {
-        guard range.length > 0 else { return 0 }
-        return attributedString.attribute(key, at: range.location, effectiveRange: nil) as? Int ?? 0
-    }
-
-    private static func stringAttribute(
-        _ key: NSAttributedString.Key,
-        in attributedString: NSAttributedString,
-        range: NSRange
-    ) -> String? {
-        guard range.length > 0 else { return nil }
-        return attributedString.attribute(key, at: range.location, effectiveRange: nil) as? String
-    }
-
-    private static func droppingListMarker(in source: NSString, range: NSRange) -> NSRange {
-        guard range.length > 0 else { return range }
-        let line = source.substring(with: range)
-        if line.hasPrefix("• ") {
-            return NSRange(location: range.location + 2, length: max(0, range.length - 2))
-        }
-        if let match = line.firstMatch(of: /^\d+\.\s/) {
-            let count = line.distance(from: match.range.lowerBound, to: match.range.upperBound)
-            return NSRange(location: range.location + count, length: max(0, range.length - count))
-        }
-        return range
-    }
 }

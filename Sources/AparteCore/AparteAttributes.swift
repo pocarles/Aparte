@@ -26,8 +26,14 @@ public enum AparteTypography {
     public static var bodyParagraphStyle: NSParagraphStyle {
         let style = NSMutableParagraphStyle()
         style.lineSpacing = 5
-        style.paragraphSpacing = 8
+        style.paragraphSpacing = 30
         style.lineBreakMode = .byWordWrapping
+        return style
+    }
+
+    public static var listParagraphStyle: NSParagraphStyle {
+        let style = bodyParagraphStyle.mutableCopy() as! NSMutableParagraphStyle
+        style.paragraphSpacing = 5
         return style
     }
 
@@ -39,4 +45,3 @@ public enum AparteTypography {
         ]
     }
 }
-

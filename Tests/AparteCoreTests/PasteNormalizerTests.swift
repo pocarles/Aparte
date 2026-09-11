@@ -35,6 +35,14 @@ final class PasteNormalizerTests: XCTestCase {
         XCTAssertEqual(font?.familyName, AparteTypography.bodyFont.familyName)
     }
 
+    func testPastedParagraphsUseEditorSpacingWithoutExtraEmptyRows() {
+        let source = NSAttributedString(string: "One\n\n\nTwo", attributes: [.underlineStyle: 1])
+        let normalized = PasteNormalizer.normalized(source)
+        XCTAssertEqual(normalized.string, "One\nTwo")
+        XCTAssertEqual(normalized.attribute(.underlineStyle, at: 4, effectiveRange: nil) as? Int, 1)
+        XCTAssertEqual(ParagraphFormatting.plainText(from: normalized), "One\n\nTwo")
+    }
+
     func testRTFPasteboardInputPreservesBoldMeaning() throws {
         let pasteboard = NSPasteboard.withUniqueName()
         defer { pasteboard.releaseGlobally() }

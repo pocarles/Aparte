@@ -34,6 +34,7 @@ On September 3, 2026, the locally prepared sandboxed candidate opened with a sep
 ## Editing and formatting
 
 - [ ] Plain typing, selection, undo, redo, spelling, and keyboard navigation behave like a macOS text editor.
+- [ ] One Return starts a paragraph with visible space above it. Return after a heading resumes body text.
 - [ ] A long document scrolls smoothly with a wheel, trackpad, scrollbar, and keyboard navigation.
 - [ ] The selection bar appears only for a non-empty selection.
 - [ ] Bold, italic, underline, headings, unordered lists, ordered lists, and links work.
@@ -49,6 +50,9 @@ On September 3, 2026, the locally prepared sandboxed candidate opened with a sep
 - [ ] Pasting plain text stays plain.
 - [ ] Copy as Markdown produces clean Markdown for the selected text or full document.
 - [ ] Copy places the full document on the clipboard with rich and plain representations without moving the cursor or changing the selection.
+- [ ] Copy two prose paragraphs into an unsent Mail draft. Paragraph separation, bold, italic, underline, and links remain usable, and body text follows the draft's font and size.
+- [ ] Copy the same text into a plain-text field or an unsent WhatsApp message. Each prose paragraph has one blank line between it and the next; consecutive list items stay compact.
+- [ ] Command-C on a selection, the footer Copy button, and plain-text copy produce the same paragraph boundaries. Copying, pasting back, saving, and reopening does not accumulate extra blank lines.
 - [ ] Save and Save Markdown As open a system Save panel with a useful filename derived from the first non-empty line.
 - [ ] Saving writes readable Markdown to a user-selected folder and handles overwrite confirmation through the system panel.
 - [ ] Copy, Save, Clear, and every abbreviated formatting control explain their action on hover.

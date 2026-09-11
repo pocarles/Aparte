@@ -11,6 +11,9 @@ local document is waiting when you come back.
 [Download the latest release](https://github.com/pocarles/Aparte/releases/latest/download/Aparte.dmg)
 or read the [product page](https://pocarles.com/aparte/).
 
+Version 1.2.0 adds paragraph spacing, ready-to-send copy, and feedback for Copy,
+Save, and Clear. Read the [release notes](https://github.com/pocarles/Aparte/releases/tag/v1.2.0).
+
 ## What it does
 
 - Opens from any app with Option-Space, or a shortcut you choose.
@@ -96,6 +99,17 @@ Copy at the bottom copies the whole pad without moving your cursor. The three-do
 menu offers plain text or Markdown; these use your selection when there is one,
 otherwise the whole pad. Plain text removes formatting and does not add Markdown
 syntax. Typed punctuation and visible list markers remain part of the text.
+
+Press Return once to start a paragraph with space above it. Copied prose includes
+a blank line between paragraphs, while consecutive list items stay together.
+Formatted copy keeps headings, emphasis, links, and lists without specifying a
+font or text size, so the receiving email or messaging app chooses its typography.
+Pasted and reopened text uses the same paragraph spacing, even if the source has
+extra blank lines.
+
+Copy, Save, and Clear respond to hover and press, then briefly show whether the
+action succeeded, the pad was empty, or something failed. The buttons stay in
+place and return focus to your writing.
 
 Text zoom changes only how the pad looks, not the formatting you copy or save.
 Your zoom and counter choices are remembered. In a list, Return starts the next

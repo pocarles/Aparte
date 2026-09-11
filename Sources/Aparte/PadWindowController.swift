@@ -21,7 +21,9 @@ final class PadWindowController: NSObject, NSTextViewDelegate {
     private let editor: EditorTextView
     private let rootView: PadBackgroundView
     private let formattingBar: FormattingBar
-    private weak var saveButton: NSButton?
+    private weak var copyButton: PadActionButton?
+    private weak var saveButton: PadActionButton?
+    private weak var clearButton: PadActionButton?
     private let countLabel = NSTextField(labelWithString: "")
     private let defaults: UserDefaults
     private let optionsMenu: () -> NSMenu
@@ -58,7 +60,7 @@ final class PadWindowController: NSObject, NSTextViewDelegate {
     }
 
     func show() {
-        resetSaveButton()
+        resetActionButtons()
         recenter()
         panel.alphaValue = 0
         panel.makeKeyAndOrderFront(nil)
@@ -72,6 +74,7 @@ final class PadWindowController: NSObject, NSTextViewDelegate {
     }
 
     func hide() {
+        resetActionButtons()
         formattingBar.closeLinkPopover()
         closeOptions()
         formattingBar.isHidden = true
@@ -100,8 +103,28 @@ final class PadWindowController: NSObject, NSTextViewDelegate {
     }
 
     @objc func copyAll() {
+        performCopyAll(to: .general)
+    }
+
+    private func performCopyAll(to pasteboard: NSPasteboard) {
         panel.makeFirstResponder(editor)
-        editor.copyAllPreservingSelection()
+        guard !editor.string.isEmpty else {
+            copyButton?.acknowledge("Empty", symbol: "exclamationmark.circle", detail: "The pad is empty. Nothing was copied.")
+            return
+        }
+        let content = editor.attributedString()
+        let expectedPlainText = ParagraphFormatting.plainText(from: content)
+        let expectedHTML = ParagraphFormatting.html(from: content)
+        let previousChange = pasteboard.changeCount
+        editor.copyAllPreservingSelection(to: pasteboard)
+        if pasteboard.changeCount != previousChange
+            && pasteboard.string(forType: .string) == expectedPlainText
+            && pasteboard.string(forType: .html) == expectedHTML {
+            copyButton?.acknowledge("Copied", symbol: "checkmark", detail: "Copied the whole pad.")
+        } else {
+            copyButton?.acknowledge("Failed", symbol: "exclamationmark.circle", detail: "The pad could not be copied. Try again.")
+            NSSound.beep()
+        }
     }
 
     @objc private func showOptions(_ sender: NSButton) {
@@ -160,12 +183,23 @@ final class PadWindowController: NSObject, NSTextViewDelegate {
 
     @objc func clearPad() {
         panel.makeFirstResponder(editor)
+        guard !editor.string.isEmpty else {
+            clearButton?.acknowledge("Empty", symbol: "exclamationmark.circle", detail: "The pad is already empty. Your recovery copy is unchanged.")
+            return
+        }
         do {
             try document.backupBeforeClear()
             editor.clearAll(nil)
             formattingBar.isHidden = true
+            if editor.string.isEmpty {
+                clearButton?.acknowledge("Cleared", symbol: "checkmark", detail: "Cleared the pad. Undo with Command-Z, or restore the last cleared text from the three-dot menu.")
+            } else {
+                clearButton?.acknowledge("Failed", symbol: "exclamationmark.circle", detail: "Your text was not cleared.")
+            }
         } catch {
             presentError(error, message: "Your text was not cleared because its recovery copy could not be saved.")
+            panel.makeFirstResponder(editor)
+            clearButton?.acknowledge("Failed", symbol: "exclamationmark.circle", detail: "Your text was not cleared because its recovery copy could not be saved.")
         }
     }
 
@@ -264,37 +298,36 @@ final class PadWindowController: NSObject, NSTextViewDelegate {
     }
 
     @objc func saveMarkdownAs() {
+        panel.makeFirstResponder(editor)
         guard !document.markdown.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            saveButton?.title = "Pad is empty"
-            saveButton?.image = NSImage(systemSymbolName: "exclamationmark.circle", accessibilityDescription: nil)
+            saveButton?.acknowledge("Empty", symbol: "exclamationmark.circle", detail: "The pad is empty. Nothing was saved.")
             NSSound.beep()
             return
         }
 
-        let panel = NSSavePanel()
-        panel.nameFieldStringValue = "\(MarkdownFileExporter.suggestedBaseName(for: document.markdown)).md"
-        panel.allowedContentTypes = [.markdown]
-        panel.canCreateDirectories = true
-        guard panel.runModal() == .OK, let destination = panel.url else { return }
+        saveButton?.resetFeedback()
+        let savePanel = NSSavePanel()
+        savePanel.nameFieldStringValue = "\(MarkdownFileExporter.suggestedBaseName(for: document.markdown)).md"
+        savePanel.allowedContentTypes = [.markdown]
+        savePanel.canCreateDirectories = true
+        defer { panel.makeFirstResponder(editor) }
+        guard savePanel.runModal() == .OK, let destination = savePanel.url else { return }
 
         do {
             try document.markdown.write(to: destination, atomically: true, encoding: .utf8)
-            saveButton?.title = "Saved"
-            saveButton?.image = NSImage(systemSymbolName: "checkmark", accessibilityDescription: nil)
-            saveButton?.toolTip = "Saved \(destination.lastPathComponent)"
+            saveButton?.acknowledge("Saved", symbol: "checkmark", detail: "Saved \(destination.lastPathComponent)")
         } catch {
-            saveButton?.title = "Could not save"
-            saveButton?.image = NSImage(systemSymbolName: "exclamationmark.circle", accessibilityDescription: nil)
-            saveButton?.toolTip = error.localizedDescription
+            saveButton?.acknowledge("Failed", symbol: "exclamationmark.circle", detail: error.localizedDescription)
             NSSound.beep()
         }
     }
 
-    private func resetSaveButton() {
-        saveButton?.title = "Save"
-        saveButton?.image = NSImage(systemSymbolName: "arrow.down.doc", accessibilityDescription: nil)
-        saveButton?.toolTip = "Choose where to save a Markdown file"
+    private func resetActionButtons() {
+        [copyButton, saveButton, clearButton].forEach { $0?.resetFeedback() }
     }
+
+    var actionButtonsForRuntimeCheck: [PadActionButton] { [copyButton, saveButton, clearButton].compactMap { $0 } }
+    func copyAllForRuntimeCheck(to pasteboard: NSPasteboard) { performCopyAll(to: pasteboard) }
 
     func runtimeSnapshot() -> RuntimeSnapshot {
         RuntimeSnapshot(
@@ -440,46 +473,33 @@ final class PadWindowController: NSObject, NSTextViewDelegate {
         scrollView.autohidesScrollers = true
         rootView.addSubview(scrollView)
 
-        let copyAllButton = NSButton(title: "Copy", target: self, action: #selector(copyAll))
-        copyAllButton.translatesAutoresizingMaskIntoConstraints = false
-        copyAllButton.isBordered = false
-        copyAllButton.bezelStyle = .inline
-        copyAllButton.font = .systemFont(ofSize: 11, weight: .medium)
-        copyAllButton.contentTintColor = .secondaryLabelColor
-        copyAllButton.image = NSImage(systemSymbolName: "doc.on.doc", accessibilityDescription: nil)
-        copyAllButton.imagePosition = .imageLeading
-        copyAllButton.toolTip = "Copy the whole pad without moving the cursor. More copy options are in the three-dot menu."
+        let copyAllButton = PadActionButton(title: "Copy", symbol: "doc.on.doc",
+                                           feedbackTitles: ["Copied", "Empty", "Failed"],
+                                           toolTip: "Copy the whole pad without moving the cursor. More copy options are in the three-dot menu.",
+                                           target: self, action: #selector(copyAll))
         let copyMenu = NSMenu()
         copyMenu.addItem(MenuCommand.copyPlain.item(target: NSApp.delegate as? NSObject))
         copyMenu.addItem(MenuCommand.copyMarkdown.item(target: NSApp.delegate as? NSObject))
         copyAllButton.menu = copyMenu
         copyAllButton.setAccessibilityLabel("Copy all")
         rootView.addSubview(copyAllButton)
+        self.copyButton = copyAllButton
 
-        let saveButton = NSButton(title: "Save", target: self, action: #selector(saveMarkdownAs))
-        saveButton.translatesAutoresizingMaskIntoConstraints = false
-        saveButton.isBordered = false
-        saveButton.bezelStyle = .inline
-        saveButton.font = .systemFont(ofSize: 11, weight: .medium)
-        saveButton.contentTintColor = .secondaryLabelColor
-        saveButton.image = NSImage(systemSymbolName: "arrow.down.doc", accessibilityDescription: nil)
-        saveButton.imagePosition = .imageLeading
-        saveButton.toolTip = "Choose where to save a Markdown file"
+        let saveButton = PadActionButton(title: "Save", symbol: "arrow.down.doc",
+                                         feedbackTitles: ["Saved", "Empty", "Failed"],
+                                         toolTip: "Choose where to save a Markdown file",
+                                         target: self, action: #selector(saveMarkdownAs))
         saveButton.setAccessibilityLabel("Save Markdown")
         rootView.addSubview(saveButton)
         self.saveButton = saveButton
 
-        let clearButton = NSButton(title: "Clear", target: self, action: #selector(clearPad))
-        clearButton.translatesAutoresizingMaskIntoConstraints = false
-        clearButton.isBordered = false
-        clearButton.bezelStyle = .inline
-        clearButton.font = .systemFont(ofSize: 11, weight: .medium)
-        clearButton.contentTintColor = .secondaryLabelColor
-        clearButton.image = NSImage(systemSymbolName: "eraser", accessibilityDescription: nil)
-        clearButton.imagePosition = .imageLeading
-        clearButton.toolTip = "Clear the pad. Undo with Command-Z, or restore the last cleared text from the three-dot menu."
+        let clearButton = PadActionButton(title: "Clear", symbol: "eraser",
+                                          feedbackTitles: ["Cleared", "Empty", "Failed"],
+                                          toolTip: "Clear the pad. Undo with Command-Z, or restore the last cleared text from the three-dot menu.",
+                                          target: self, action: #selector(clearPad))
         clearButton.setAccessibilityLabel("Clear pad")
         rootView.addSubview(clearButton)
+        self.clearButton = clearButton
 
         let optionsButton = NSButton(image: NSImage(systemSymbolName: "ellipsis", accessibilityDescription: "More options")!, target: self, action: #selector(showOptions(_:)))
         optionsButton.translatesAutoresizingMaskIntoConstraints = false
@@ -574,6 +594,106 @@ final class PadWindowController: NSObject, NSTextViewDelegate {
     private func activeScreen() -> NSScreen? {
         let mouse = NSEvent.mouseLocation
         return NSScreen.screens.first(where: { NSMouseInRect(mouse, $0.frame, false) }) ?? NSScreen.main
+    }
+}
+
+@MainActor
+final class PadActionButton: NSButton {
+    private let restingTitle: String
+    private let restingSymbol: String
+    private let restingToolTip: String
+    private var reservedWidth: CGFloat = 0
+    private var hoverArea: NSTrackingArea?
+    private var isHovered = false
+    private var feedbackReset: DispatchWorkItem?
+    private var feedbackGeneration: UInt = 0
+
+    init(title: String, symbol: String, feedbackTitles: [String], toolTip: String,
+         target: AnyObject, action: Selector) {
+        restingTitle = title
+        restingSymbol = symbol
+        restingToolTip = toolTip
+        super.init(frame: .zero)
+        translatesAutoresizingMaskIntoConstraints = false
+        isBordered = false
+        bezelStyle = .inline
+        setButtonType(.momentaryChange)
+        font = .systemFont(ofSize: 11, weight: .medium)
+        contentTintColor = .secondaryLabelColor
+        imagePosition = .imageLeading
+        image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
+        self.target = target
+        self.action = action
+        // Keep all three hit targets in place when a result replaces a label.
+        for candidate in [title] + feedbackTitles {
+            self.title = candidate
+            for candidateSymbol in [symbol, "checkmark", "exclamationmark.circle"] {
+                image = NSImage(systemSymbolName: candidateSymbol, accessibilityDescription: nil)
+                reservedWidth = max(reservedWidth, super.intrinsicContentSize.width + 12)
+            }
+        }
+        resetFeedback()
+    }
+
+    required init?(coder: NSCoder) { nil }
+    override var acceptsFirstResponder: Bool { isEnabled }
+    override var mouseDownCanMoveWindow: Bool { false }
+    override var intrinsicContentSize: NSSize { NSSize(width: reservedWidth, height: 26) }
+    // SF Symbols have different optical insets. Feedback must not move the hit target.
+    override var alignmentRectInsets: NSEdgeInsets { NSEdgeInsetsZero }
+
+    func acknowledge(_ title: String, symbol: String, detail: String) {
+        feedbackReset?.cancel()
+        feedbackGeneration &+= 1
+        let generation = feedbackGeneration
+        self.title = title
+        image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
+        toolTip = detail
+        setAccessibilityValue(detail)
+        NSAccessibility.post(element: self, notification: .valueChanged)
+        let reset = DispatchWorkItem { [weak self] in
+            guard let self, self.feedbackGeneration == generation else { return }
+            self.resetFeedback()
+        }
+        feedbackReset = reset
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2, execute: reset)
+    }
+
+    func resetFeedback() {
+        feedbackGeneration &+= 1
+        feedbackReset?.cancel()
+        feedbackReset = nil
+        title = restingTitle
+        image = NSImage(systemSymbolName: restingSymbol, accessibilityDescription: nil)
+        toolTip = restingToolTip
+        setAccessibilityValue(nil)
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let hoverArea { removeTrackingArea(hoverArea) }
+        let area = NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self)
+        addTrackingArea(area)
+        hoverArea = area
+        // Layout or reopening the pad can move a button under a stationary pointer.
+        isHovered = window.map { bounds.contains(convert($0.mouseLocationOutsideOfEventStream, from: nil)) } ?? false
+        needsDisplay = true
+    }
+
+    override func mouseEntered(with event: NSEvent) { isHovered = true; needsDisplay = true }
+    override func mouseExited(with event: NSEvent) { isHovered = false; needsDisplay = true }
+
+    override func highlight(_ flag: Bool) {
+        super.highlight(flag)
+        needsDisplay = true
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        if isEnabled && (isHovered || isHighlighted || window?.firstResponder === self) {
+            NSColor.labelColor.withAlphaComponent(isHighlighted ? 0.16 : 0.07).setFill()
+            NSBezierPath(roundedRect: bounds, xRadius: 6, yRadius: 6).fill()
+        }
+        super.draw(dirtyRect)
     }
 }
 

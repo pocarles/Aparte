@@ -2,6 +2,14 @@
 
 All notable changes appear here. The project follows semantic versioning.
 
+## 1.2.0 - 2026-09-11
+
+- Return starts a visibly separated paragraph. Pasted and reopened drafts use consistent spacing without extra empty rows.
+- Copy and plain-text copy include blank lines between prose paragraphs and keep consecutive list items compact.
+- Formatted copy preserves headings, emphasis, links, and lists without forcing the editor's font or size into another app.
+- Saved Markdown separates prose paragraphs with blank lines and preserves numbered-list starting values.
+- Copy, Save, and Clear show hover and press states, then brief success, empty-pad, or failure feedback without moving the buttons or interrupting writing.
+
 ## 1.1.0 - 2026-09-07
 
 - Every writing command has a keyboard shortcut, shown beside its option in the menu. Formatting, editing, recovery, and app commands expand within the card.

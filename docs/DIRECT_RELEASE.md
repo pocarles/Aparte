@@ -15,6 +15,14 @@ make package-direct-dry-run
 
 Do not use the direct-download identity or entitlements for the Mac App Store package. `make package-app-store-local` and `make package-mas` remain separate targets.
 
+## 1.2.0 release metadata
+
+Version 1.2.0, build 7, is dated 2026-09-11. The app manifest, direct-package
+defaults, validator defaults, and manual workflow inputs use these values.
+Tagged releases read the build number from `Support/Info.plist` and require the
+tag version to match the manifest. Run `make check` and `make check-direct` before
+tagging `v1.2.0`; publication still requires the signed and notarized workflow.
+
 ## 1.1.0 packaging verification
 
 The local 1.1.0 candidate passes `make check`, `make check-app-store`, and

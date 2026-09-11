@@ -42,7 +42,7 @@ public enum PasteNormalizer {
                 output.addAttribute(.aparteListKind, value: kind.rawValue, range: range)
             }
         }
-        return output
+        return ParagraphFormatting.editorText(from: output)
     }
 
     public static func read(from pasteboard: NSPasteboard) -> NSAttributedString? {
@@ -63,7 +63,7 @@ public enum PasteNormalizer {
             return normalized(html)
         }
         if let string = pasteboard.string(forType: .string) {
-            return NSAttributedString(string: string, attributes: AparteTypography.baseAttributes)
+            return ParagraphFormatting.editorText(from: NSAttributedString(string: string, attributes: AparteTypography.baseAttributes))
         }
         return nil
     }

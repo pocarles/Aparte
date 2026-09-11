@@ -45,8 +45,20 @@ final class EditorTextView: NSTextView {
     override func insertNewline(_ sender: Any?) {
         guard continueListIfNeeded() else {
             super.insertNewline(sender)
+            typingAttributes = AparteTypography.baseAttributes
             return
         }
+    }
+
+    override func copy(_ sender: Any?) {
+        copySelection(to: .general)
+    }
+
+    func copySelection(to pasteboard: NSPasteboard) {
+        let range = selectedRange()
+        guard let textStorage, range.length > 0,
+              NSMaxRange(range) <= textStorage.length else { return }
+        writeToPasteboard(textStorage.attributedSubstring(from: range), pasteboard: pasteboard)
     }
 
     override func paste(_ sender: Any?) {
@@ -69,7 +81,7 @@ final class EditorTextView: NSTextView {
             : NSRange(location: 0, length: textStorage.length)
         guard NSMaxRange(range) <= textStorage.length else { return }
 
-        let plainText = textStorage.attributedSubstring(from: range).string
+        let plainText = ParagraphFormatting.plainText(from: textStorage.attributedSubstring(from: range))
         pasteboard.clearContents()
         pasteboard.setString(plainText, forType: .string)
     }
@@ -156,6 +168,7 @@ final class EditorTextView: NSTextView {
             textStorage.insert(NSAttributedString(string: marker, attributes: AparteTypography.baseAttributes), at: lineRange.location)
             let resultingRange = NSRange(location: lineRange.location, length: lineRange.length + marker.utf16.count)
             textStorage.addAttribute(.aparteListKind, value: kind.rawValue, range: resultingRange)
+            textStorage.addAttribute(.paragraphStyle, value: AparteTypography.listParagraphStyle, range: resultingRange)
         }
         textStorage.endEditing()
         didChangeText()
@@ -267,6 +280,7 @@ final class EditorTextView: NSTextView {
         )
         let nextMarker = ListContinuation.nextMarker(after: continuationMarker)
         var markerAttributes = AparteTypography.baseAttributes
+        markerAttributes[.paragraphStyle] = AparteTypography.listParagraphStyle
         if let storedKind {
             markerAttributes[.aparteListKind] = storedKind.rawValue
         }
@@ -360,16 +374,8 @@ final class EditorTextView: NSTextView {
         pasteboard: NSPasteboard
     ) {
         pasteboard.clearContents()
-        pasteboard.setString(attributedString.string, forType: .string)
-        guard attributedString.length > 0,
-              let rtf = try? attributedString.data(
-                  from: NSRange(location: 0, length: attributedString.length),
-                  documentAttributes: [.documentType: NSAttributedString.DocumentType.rtf]
-              )
-        else {
-            return
-        }
-        pasteboard.setData(rtf, forType: .rtf)
+        pasteboard.setString(ParagraphFormatting.plainText(from: attributedString), forType: .string)
+        pasteboard.setString(ParagraphFormatting.html(from: attributedString), forType: .html)
     }
 
     private func storedListKind(
