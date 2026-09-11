@@ -69,9 +69,9 @@ public enum PasteNormalizer {
                 ordinal = previousList === list ? (ordinal == Int.max ? Int.max : ordinal + 1) : list.startingItemNumber
                 previousList = list
                 let line = source.substring(with: paragraph) as NSString
-                let prefixLength = nativeListPrefixLength(in: line, generatedMarker: list.marker(forItemNumber: ordinal))
-                let marker = kind == .ordered ? "\(ordinal). " : "• "
-                replacements.append((NSRange(location: cursor, length: prefixLength), marker))
+                let marker = kind == .ordered ? "\(ordinal)." : "•"
+                let prefixLength = nativeListPrefixLength(in: line, generatedMarker: list.marker(forItemNumber: ordinal), canonicalMarker: marker)
+                replacements.append((NSRange(location: cursor, length: prefixLength), marker + " "))
                 output.addAttribute(.aparteListKind, value: kind.rawValue, range: paragraph)
                 output.removeAttribute(.aparteHeadingLevel, range: paragraph)
             } else { previousList = nil }
@@ -85,13 +85,15 @@ public enum PasteNormalizer {
         return ParagraphFormatting.editorText(from: output)
     }
 
-    static func nativeListPrefixLength(in line: NSString, generatedMarker: String) -> Int {
+    static func nativeListPrefixLength(in line: NSString, generatedMarker: String, canonicalMarker: String) -> Int {
         // Some importers include the list's separators in the generated marker.
         // Trim that metadata only; content tabs in the paragraph stay untouched.
-        let marker = generatedMarker.trimmingCharacters(in: .whitespaces)
-        guard !marker.isEmpty else { return 0 }
-        for prefix in ["\t\(marker)\t", "\(marker)\t"] where line.hasPrefix(prefix) {
-            return prefix.utf16.count
+        // Other importers omit punctuation present in the visible list marker.
+        let candidates = Set([generatedMarker, canonicalMarker].map { $0.trimmingCharacters(in: .whitespaces) })
+        for marker in candidates where !marker.isEmpty {
+            for prefix in ["\t\(marker)\t", "\(marker)\t"] where line.hasPrefix(prefix) {
+                return prefix.utf16.count
+            }
         }
         return 0
     }

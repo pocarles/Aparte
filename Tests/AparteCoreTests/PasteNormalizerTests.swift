@@ -9,16 +9,37 @@ final class PasteNormalizerTests: XCTestCase {
                 for leadingTab in ["", "\t"] {
                     let prefix = leadingTab + marker + "\t"
                     let line = prefix + "One\tinside\t"
-                    let length = PasteNormalizer.nativeListPrefixLength(in: line as NSString, generatedMarker: generated)
+                    let length = PasteNormalizer.nativeListPrefixLength(in: line as NSString, generatedMarker: generated, canonicalMarker: marker)
                     XCTAssertEqual(length, prefix.utf16.count)
                     XCTAssertEqual((line as NSString).substring(from: length), "One\tinside\t")
                 }
                 for line in [marker + "x\tOne", "\t" + marker + "x\tOne", "\tuser\ttabs", marker + " One"] {
-                    XCTAssertEqual(PasteNormalizer.nativeListPrefixLength(in: line as NSString, generatedMarker: generated), 0)
+                    XCTAssertEqual(PasteNormalizer.nativeListPrefixLength(in: line as NSString, generatedMarker: generated, canonicalMarker: marker), 0)
                 }
             }
         }
-        XCTAssertEqual(PasteNormalizer.nativeListPrefixLength(in: "\t\tOne", generatedMarker: " \t "), 0)
+        XCTAssertEqual(PasteNormalizer.nativeListPrefixLength(in: "\t\tOne", generatedMarker: " \t ", canonicalMarker: ""), 0)
+    }
+
+    func testCanonicalMarkerFallbackMatchesOnlyTheResolvedItem() {
+        for (generated, canonical) in [("7", "7."), ("○", "•"), ("", "•")] {
+            let visibleMarkers = generated.isEmpty ? [canonical] : [generated, canonical]
+            for visible in visibleMarkers {
+                for leadingTab in ["", "\t"] {
+                    let prefix = leadingTab + visible + "\t"
+                    let line = prefix + "One\tinside\t"
+                    let length = PasteNormalizer.nativeListPrefixLength(in: line as NSString, generatedMarker: generated, canonicalMarker: canonical)
+                    XCTAssertEqual(length, prefix.utf16.count)
+                    XCTAssertEqual((line as NSString).substring(from: length), "One\tinside\t")
+                    let plain = PasteNormalizer.normalized(NSAttributedString(string: line))
+                    XCTAssertEqual(plain.string, line)
+                    XCTAssertNil(plain.attribute(.aparteListKind, at: 0, effectiveRange: nil))
+                }
+            }
+            for line in ["8.\tOne", "\t8.\tOne", "77.\tOne", "7.x\tOne", "\t7.x\tOne", "7. One", "•x\tOne", "\tuser\ttabs"] {
+                XCTAssertEqual(PasteNormalizer.nativeListPrefixLength(in: line as NSString, generatedMarker: generated, canonicalMarker: canonical), 0)
+            }
+        }
     }
 
     func testNativeListMarkerShapesNormalizeWithoutRelyingOnRTFImporter() {
@@ -52,7 +73,7 @@ final class PasteNormalizerTests: XCTestCase {
         list.startingItemNumber = 7
         let style = NSMutableParagraphStyle()
         style.textLists = [list]
-        for source in ["7.x\tOne\tinside", "\t7.x\tOne\tinside", "\tuser\ttabs"] {
+        for source in ["7.x\tOne\tinside", "\t7.x\tOne\tinside", "8.\tOne\tinside", "\t8.\tOne\tinside", "\tuser\ttabs"] {
             let result = PasteNormalizer.normalized(NSAttributedString(string: source, attributes: [.paragraphStyle: style]))
             XCTAssertEqual(result.string, "7. " + source)
         }
@@ -78,11 +99,7 @@ final class PasteNormalizerTests: XCTestCase {
         let data = try text.data(from: NSRange(location: 0, length: text.length), documentAttributes: [.documentType: NSAttributedString.DocumentType.rtf])
         board.setData(data, forType: .rtf)
         let result = try XCTUnwrap(PasteNormalizer.read(from: board))
-        let imported = try NSAttributedString(data: data, options: [.documentType: NSAttributedString.DocumentType.rtf], documentAttributes: nil)
-        let importedStyle = imported.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle
-        let importedMarker = importedStyle?.textLists.first?.marker(forItemNumber: 7) ?? ""
-        XCTAssertEqual(result.string, "7. One\tinside\n8. Two",
-                       "Imported marker: \(String(reflecting: importedMarker)); imported text: \(String(reflecting: imported.string))")
+        XCTAssertEqual(result.string, "7. One\tinside\n8. Two")
         XCTAssertEqual(ParagraphFormatting.plainText(from: result), result.string)
     }
 
