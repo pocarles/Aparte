@@ -2,6 +2,11 @@
 
 All notable changes appear here. The project follows semantic versioning.
 
+## 1.4.0 - 2026-09-11
+
+- Settings… opens a native window for the global keyboard shortcut, launch at login, and update checks in direct-download builds. Command-comma opens the same window from the pad.
+- Shortcut recording and login approval or errors stay in Settings. The writing-options card keeps its writing commands and has one Settings entry.
+
 ## 1.3.0 - 2026-09-11
 
 - Direct-download builds check for updates daily through Sparkle and offer Check for Updates… in the main, status, and options menus. Updates do not install automatically by default.

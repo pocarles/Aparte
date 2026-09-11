@@ -99,13 +99,15 @@ On September 3, 2026, the locally prepared sandboxed candidate opened with a sep
 - [ ] Restoring over current writing asks first; Cancel preserves it and Command-Z undoes an accepted restore.
 - [ ] Discard recovery copy removes recovery without changing current writing.
 - [ ] Return continues both bullet and numbered lists; Return on an empty item exits the list, and Undo restores the prior text.
-- [ ] Set a different global shortcut, invoke from another app, relaunch, and verify it persists; reset returns to Option-Space.
-- [ ] An unavailable shortcut reports failure and leaves the previous shortcut working. Escape cancels recording without changing the shortcut.
-- [ ] On an installed signed candidate, turn launch at login on and off and confirm System Settings matches; if macOS requires approval, Aparte says so.
+- [ ] Settings… appears once in the Aparte application menu, status menu, and writing-options card. Command-comma opens a normal Settings window, hides the pad, and saves the draft. There is no separate top-level Settings menu.
+- [ ] Close and reopen Settings; the same window returns. Tab reaches its controls. Check light and dark appearance and verify all status/error text fits.
+- [ ] In Settings, click the shortcut control and set a different global shortcut, invoke from another app, relaunch, and verify it persists; reset returns to Option-Space.
+- [ ] An unavailable shortcut reports failure and leaves the previous shortcut working. Escape cancels recording without changing the shortcut or closing Settings; Escape outside recording closes Settings. Closing Settings or switching windows also stops recording.
+- [ ] On an installed signed candidate, turn launch at login on and off and confirm System Settings matches; if macOS requires approval, Settings shows approval is required and offers Open Login Items. Return from System Settings and verify the status refreshes. Errors remain visible beside the control.
 
 ## Direct-download updates
 
-- [ ] On an installed direct candidate, Check for Updates… appears in the main Aparte menu, status menu, and three-dot options card. Its label fits without a keyboard hint.
+- [ ] On an installed direct candidate, Check for Updates… appears in the main Aparte menu, status menu, and three-dot options card. Its label fits without a keyboard hint. Settings also has a Check for Updates button that disables when a check is unavailable.
 - [ ] Choosing it dismisses the writing pad and dimming overlays, shows Sparkle's window, and preserves the draft. It is disabled while Sparkle cannot start another check.
 - [ ] A current version reports no update. An offline check reports a recoverable error, and writing still works.
 - [ ] A signed older test build discovers the published signed candidate, displays its version and release notes, installs after approval, relaunches, and restores the same writing.

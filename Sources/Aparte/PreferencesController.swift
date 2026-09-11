@@ -32,308 +32,355 @@ final class PreferencesController: NSObject, NSWindowDelegate {
 
     private weak var hotKeyController: HotKeyController?
     private let launchAtLoginService: any LaunchAtLoginService
-    private var recorderPanel: NSPanel?
-    private var recorderField: NSTextField?
-    private var statusLabel: NSTextField?
-    private var resetButton: NSButton?
+    private let openLoginItems: () -> Void
+    private var settingsStack: NSStackView?
     private var recordingMonitor: Any?
     private var isRecording = false
 
+    private(set) var window: NSWindow?
+    private(set) var shortcutButton: NSButton?
+    private(set) var shortcutStatusLabel: NSTextField?
+    private(set) var resetButton: NSButton?
+    private(set) var loginButton: NSButton?
+    private(set) var loginStatusLabel: NSTextField?
+    private(set) var loginApprovalButton: NSButton?
     private(set) var lastLaunchAtLoginError: Error?
+    #if APARTE_DIRECT_UPDATES
+    weak var updateController: (any UpdateChecking)?
+    var onCheckForUpdates: (() -> Void)?
+    private(set) var updateButton: NSButton?
+    #endif
 
     var onShortcutChanged: ((HotKeyController.Shortcut) -> Void)?
     var onLaunchAtLoginStateChanged: ((LaunchAtLoginState) -> Void)?
 
     init(
         hotKeyController: HotKeyController?,
-        launchAtLoginService: any LaunchAtLoginService = SystemLaunchAtLoginService()
+        launchAtLoginService: any LaunchAtLoginService = SystemLaunchAtLoginService(),
+        openLoginItems: @escaping () -> Void = { SMAppService.openSystemSettingsLoginItems() }
     ) {
         self.hotKeyController = hotKeyController
         self.launchAtLoginService = launchAtLoginService
+        self.openLoginItems = openLoginItems
         super.init()
     }
 
-    var isCapturingShortcut: Bool {
-        isRecording && recorderPanel?.isVisible == true
-    }
-
-    var launchAtLoginState: LaunchAtLoginState {
-        Self.state(for: launchAtLoginService.status)
-    }
-
-    var launchAtLoginEnabled: Bool {
-        launchAtLoginState == .enabled
-    }
-
-    var launchAtLoginRequiresApproval: Bool {
-        launchAtLoginState == .requiresApproval
-    }
+    var isCapturingShortcut: Bool { isRecording && window?.isVisible == true }
+    var launchAtLoginState: LaunchAtLoginState { Self.state(for: launchAtLoginService.status) }
+    var launchAtLoginEnabled: Bool { launchAtLoginState == .enabled }
+    var launchAtLoginRequiresApproval: Bool { launchAtLoginState == .requiresApproval }
 
     @discardableResult
     func setLaunchAtLoginEnabled(_ enabled: Bool) -> Result<LaunchAtLoginState, Error> {
         let state = launchAtLoginState
         if (enabled && state == .enabled) || (!enabled && state == .disabled) {
             lastLaunchAtLoginError = nil
+            refreshLoginState()
             onLaunchAtLoginStateChanged?(state)
             return .success(state)
         }
-
         do {
-            if enabled {
-                try launchAtLoginService.register()
-            } else {
-                try launchAtLoginService.unregister()
-            }
+            if enabled { try launchAtLoginService.register() }
+            else { try launchAtLoginService.unregister() }
             lastLaunchAtLoginError = nil
             let updatedState = launchAtLoginState
+            refreshLoginState()
             onLaunchAtLoginStateChanged?(updatedState)
             return .success(updatedState)
         } catch {
             lastLaunchAtLoginError = error
-            let currentState = launchAtLoginState
-            onLaunchAtLoginStateChanged?(currentState)
+            refreshLoginState()
+            onLaunchAtLoginStateChanged?(launchAtLoginState)
             return .failure(error)
         }
     }
 
     @discardableResult
     func toggleLaunchAtLogin() -> Result<LaunchAtLoginState, Error> {
-        switch launchAtLoginState {
-        case .enabled, .requiresApproval:
-            return setLaunchAtLoginEnabled(false)
-        case .disabled, .unavailable:
-            return setLaunchAtLoginEnabled(true)
-        }
+        setLaunchAtLoginEnabled(![.enabled, .requiresApproval].contains(launchAtLoginState))
     }
 
-    func showShortcutRecorder() {
-        guard hotKeyController != nil else { return }
-        let panel = makeRecorderPanelIfNeeded()
-        panel.center()
-        panel.makeKeyAndOrderFront(nil)
+    func showSettings() {
+        let settings = makeWindowIfNeeded()
+        refreshShortcut()
+        refreshLoginState()
+        refreshUpdates()
+        settings.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
-        beginRecording()
     }
 
-    func closeShortcutRecorder() {
-        isRecording = false
-        stopRecordingMonitor()
-        recorderPanel?.orderOut(nil)
+    func closeSettings() {
+        stopRecording()
+        window?.close()
     }
 
-    private func makeRecorderPanelIfNeeded() -> NSPanel {
-        if let recorderPanel { return recorderPanel }
-
-        let panel = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 420, height: 178),
-            styleMask: [.titled, .closable, .utilityWindow],
-            backing: .buffered,
-            defer: false
+    private func makeWindowIfNeeded() -> NSWindow {
+        if let window { return window }
+        let settings = SettingsWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 460, height: 330),
+            styleMask: [.titled, .closable], backing: .buffered, defer: false
         )
-        panel.title = "Keyboard shortcut"
-        panel.isFloatingPanel = true
-        panel.hidesOnDeactivate = false
-        panel.becomesKeyOnlyIfNeeded = false
-        panel.delegate = self
-
+        settings.title = "Settings"
+        settings.isReleasedWhenClosed = false
+        settings.delegate = self
+        settings.onCancel = { [weak self] in self?.cancelShortcutOrClose() }
         let content = NSView()
-        content.translatesAutoresizingMaskIntoConstraints = false
-        panel.contentView = content
+        settings.contentView = content
+        let stack = NSStackView()
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 12
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        settingsStack = stack
+        content.addSubview(stack)
 
-        let root = NSView()
-        root.translatesAutoresizingMaskIntoConstraints = false
-        content.addSubview(root)
-
-        let explanation = NSTextField(
-            wrappingLabelWithString: "Press a key with Command, Control, or Option."
-        )
-        explanation.textColor = .secondaryLabelColor
-        explanation.alignment = .center
-
-        let field = NSTextField(labelWithString: "")
-        field.font = .systemFont(ofSize: 15, weight: .medium)
-        field.alignment = .center
-        field.isBordered = true
-        field.isBezeled = true
-        field.drawsBackground = true
-        field.backgroundColor = .textBackgroundColor
-        field.textColor = .labelColor
-
-        let reset = NSButton(
-            title: "Reset to Option-Space",
-            target: self,
-            action: #selector(resetShortcut)
-        )
-        reset.bezelStyle = .rounded
-
-        let cancel = NSButton(
-            title: "Done",
-            target: self,
-            action: #selector(closeRecorder)
-        )
-        cancel.bezelStyle = .rounded
-
-        let status = NSTextField(labelWithString: "")
-        status.alignment = .center
-        status.textColor = .secondaryLabelColor
-        status.isHidden = true
-
-        [explanation, field, reset, cancel, status].forEach {
-            $0.translatesAutoresizingMaskIntoConstraints = false
-            root.addSubview($0)
+        func label(_ text: String, heading: Bool = false) -> NSTextField {
+            let label = NSTextField(wrappingLabelWithString: text)
+            label.font = .systemFont(ofSize: heading ? 13 : 12, weight: heading ? .semibold : .regular)
+            label.textColor = heading ? .labelColor : .secondaryLabelColor
+            label.preferredMaxLayoutWidth = 412
+            label.setContentCompressionResistancePriority(.required, for: .vertical)
+            return label
         }
+        func add(_ view: NSView) {
+            stack.addArrangedSubview(view)
+            view.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
+        }
+        func button(_ title: String, _ action: Selector) -> NSButton {
+            let button = NSButton(title: title, target: self, action: action)
+            button.bezelStyle = .rounded
+            return button
+        }
+        func divider() {
+            let line = NSBox()
+            line.boxType = .separator
+            add(line)
+            stack.setCustomSpacing(18, after: line)
+        }
+
+        add(label("Keyboard shortcut", heading: true))
+        add(label("Show or hide Aparte from any app."))
+        let shortcut = button("", #selector(recordShortcut))
+        shortcut.setAccessibilityLabel("Record keyboard shortcut")
+        let reset = button("Reset to Option-Space", #selector(resetShortcut))
+        let shortcutRow = NSStackView(views: [shortcut, reset])
+        shortcutRow.spacing = 12
+        stack.addArrangedSubview(shortcutRow)
+        let shortcutStatus = label("")
+        add(shortcutStatus)
+        divider()
+
+        let login = NSButton(checkboxWithTitle: "Launch Aparte at login", target: self, action: #selector(changeLaunchAtLogin))
+        login.allowsMixedState = true
+        stack.addArrangedSubview(login)
+        let loginStatus = label("")
+        add(loginStatus)
+        let approval = button("Open Login Items…", #selector(openLoginItemsSettings))
+        stack.addArrangedSubview(approval)
+
+        #if APARTE_DIRECT_UPDATES
+        divider()
+        add(label("Updates", heading: true))
+        let update = button("Check for Updates…", #selector(checkForUpdates))
+        stack.addArrangedSubview(update)
+        updateButton = update
+        #endif
 
         NSLayoutConstraint.activate([
-            root.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 20),
-            root.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -20),
-            root.topAnchor.constraint(equalTo: content.topAnchor, constant: 18),
-            root.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -16),
-
-            explanation.leadingAnchor.constraint(equalTo: root.leadingAnchor),
-            explanation.trailingAnchor.constraint(equalTo: root.trailingAnchor),
-            explanation.topAnchor.constraint(equalTo: root.topAnchor),
-
-            field.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 56),
-            field.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -56),
-            field.topAnchor.constraint(equalTo: explanation.bottomAnchor, constant: 12),
-            field.heightAnchor.constraint(equalToConstant: 32),
-
-            status.leadingAnchor.constraint(equalTo: root.leadingAnchor),
-            status.trailingAnchor.constraint(equalTo: root.trailingAnchor),
-            status.topAnchor.constraint(equalTo: field.bottomAnchor, constant: 5),
-            status.heightAnchor.constraint(equalToConstant: 16),
-
-            reset.leadingAnchor.constraint(equalTo: root.leadingAnchor),
-            reset.bottomAnchor.constraint(equalTo: root.bottomAnchor),
-
-            cancel.trailingAnchor.constraint(equalTo: root.trailingAnchor),
-            cancel.bottomAnchor.constraint(equalTo: root.bottomAnchor),
-
-            reset.topAnchor.constraint(greaterThanOrEqualTo: status.bottomAnchor, constant: 4),
-            cancel.topAnchor.constraint(greaterThanOrEqualTo: status.bottomAnchor, constant: 4)
+            stack.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 24),
+            stack.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -24),
+            stack.topAnchor.constraint(equalTo: content.topAnchor, constant: 24)
         ])
-
-        recorderPanel = panel
-        recorderField = field
-        statusLabel = status
+        window = settings
+        shortcutButton = shortcut
         resetButton = reset
-        return panel
+        shortcutStatusLabel = shortcutStatus
+        loginButton = login
+        loginStatusLabel = loginStatus
+        loginApprovalButton = approval
+        refreshShortcut()
+        refreshLoginState()
+        fitWindowToContent()
+        settings.center()
+        return settings
     }
 
-    private func beginRecording() {
-        guard let field = recorderField else { return }
-        stopRecordingMonitor()
-        isRecording = true
-        field.stringValue = "Press a key…"
-        resetButton?.isEnabled = true
+    private func fitWindowToContent() {
+        guard let window, let content = window.contentView, let settingsStack else { return }
+        content.layoutSubtreeIfNeeded()
+        let height = ceil(settingsStack.fittingSize.height) + 48
+        guard abs(content.bounds.height - height) > 0.5 else { return }
+        let top = window.frame.maxY
+        window.setContentSize(NSSize(width: 460, height: height))
+        window.setFrameOrigin(NSPoint(x: window.frame.minX, y: top - window.frame.height))
+        content.layoutSubtreeIfNeeded()
+    }
 
-        if let controller = hotKeyController,
-           let failure = controller.startupRegistrationFailure {
-            showError(
-                "Current shortcut \(controller.shortcutDescription) is unavailable. \(failure.localizedDescription)"
-            )
+    private func refreshShortcut() {
+        guard !isRecording else { return }
+        defer { fitWindowToContent() }
+        shortcutButton?.title = hotKeyController?.shortcutDescription ?? "Unavailable"
+        shortcutButton?.isEnabled = hotKeyController != nil
+        resetButton?.isEnabled = hotKeyController != nil
+        if let failure = hotKeyController?.startupRegistrationFailure {
+            showShortcutError("This shortcut is unavailable. \(failure.localizedDescription)")
         } else {
-            statusLabel?.stringValue = ""
-            statusLabel?.isHidden = true
+            shortcutStatusLabel?.stringValue = "Click the shortcut to change it."
+            shortcutStatusLabel?.textColor = .secondaryLabelColor
         }
+    }
 
+    private func refreshLoginState() {
+        defer { fitWindowToContent() }
+        let state = launchAtLoginState
+        loginButton?.state = state == .requiresApproval ? .mixed : (state == .enabled ? .on : .off)
+        loginButton?.isEnabled = state != .unavailable
+        loginApprovalButton?.isHidden = state != .requiresApproval
+        let description: String
+        switch state {
+        case .disabled: description = "Aparte won’t open automatically when you log in."
+        case .enabled: description = "Aparte opens in the menu bar when you log in."
+        case .requiresApproval: description = "Allow Aparte in System Settings → Login Items."
+        case .unavailable: description = "Launch at login is unavailable. Install Aparte in Applications and reopen it."
+        }
+        if let error = lastLaunchAtLoginError {
+            loginStatusLabel?.stringValue = "Couldn’t change launch at login. \(error.localizedDescription)"
+            loginStatusLabel?.textColor = .systemRed
+        } else {
+            loginStatusLabel?.stringValue = description
+            loginStatusLabel?.textColor = .secondaryLabelColor
+        }
+    }
+
+    private func refreshUpdates() {
+        #if APARTE_DIRECT_UPDATES
+        updateButton?.isEnabled = updateController?.canCheckForUpdates == true
+        #endif
+    }
+
+    @objc private func recordShortcut() {
+        defer { fitWindowToContent() }
+        guard window?.isVisible == true, hotKeyController != nil else { return }
+        if isRecording { stopRecording(); refreshShortcut(); return }
+        stopRecording()
+        isRecording = true
+        shortcutButton?.title = "Cancel recording"
+        shortcutStatusLabel?.stringValue = "Press a key with Command, Control, or Option. Escape cancels."
+        shortcutStatusLabel?.textColor = .secondaryLabelColor
         recordingMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self else { return event }
-            let consumed = MainActor.assumeIsolated {
-                self.handleShortcutEvent(event)
-            }
+            let consumed = MainActor.assumeIsolated { self.handleShortcutEvent(event) }
             return consumed ? nil : event
         }
-        recorderPanel?.makeFirstResponder(field)
+        window?.makeFirstResponder(shortcutButton)
     }
 
     @discardableResult
-    private func handleShortcutEvent(_ event: NSEvent) -> Bool {
-        guard isCapturingShortcut, event.window === recorderPanel else { return false }
-
+    func handleShortcutEvent(_ event: NSEvent) -> Bool {
+        defer { fitWindowToContent() }
+        guard isCapturingShortcut, event.window === window else { return false }
         if event.keyCode == 53 {
-            closeShortcutRecorder()
+            cancelShortcutOrClose()
             return true
         }
-
-        guard let shortcut = HotKeyController.shortcut(
-            keyCode: event.keyCode,
-            modifierFlags: event.modifierFlags
-        ) else {
-            showError("Use Command, Control, or Option with another key.")
+        guard let shortcut = HotKeyController.shortcut(keyCode: event.keyCode, modifierFlags: event.modifierFlags) else {
+            showShortcutError("Use Command, Control, or Option with another key.")
             NSSound.beep()
             return true
         }
-
         guard let hotKeyController else { return false }
         switch hotKeyController.updateShortcut(shortcut) {
         case .success:
-            recorderField?.stringValue = hotKeyController.shortcutDescription
-            statusLabel?.stringValue = "Shortcut saved"
-            statusLabel?.textColor = .systemGreen
-            statusLabel?.isHidden = false
-            isRecording = false
-            stopRecordingMonitor()
+            stopRecording()
+            refreshShortcut()
+            shortcutStatusLabel?.stringValue = "Shortcut saved."
             onShortcutChanged?(shortcut)
-            return true
         case let .failure(error):
-            showError(error.localizedDescription)
+            showShortcutError(error.localizedDescription)
             NSSound.beep()
-            return true
         }
+        return true
     }
 
-    private func showError(_ message: String) {
-        statusLabel?.stringValue = message
-        statusLabel?.textColor = .systemRed
-        statusLabel?.isHidden = false
+    private func showShortcutError(_ message: String) {
+        defer { fitWindowToContent() }
+        shortcutStatusLabel?.stringValue = message
+        shortcutStatusLabel?.textColor = .systemRed
     }
 
-    private func stopRecordingMonitor() {
-        if let recordingMonitor {
-            NSEvent.removeMonitor(recordingMonitor)
-        }
+    private func stopRecording() {
+        isRecording = false
+        if let recordingMonitor { NSEvent.removeMonitor(recordingMonitor) }
         recordingMonitor = nil
     }
 
+    private func cancelShortcutOrClose() {
+        if isRecording {
+            stopRecording()
+            refreshShortcut()
+        } else {
+            closeSettings()
+        }
+    }
+
     @objc private func resetShortcut() {
+        defer { fitWindowToContent() }
         guard let hotKeyController else { return }
         switch hotKeyController.resetToDefault() {
         case .success:
-            isRecording = false
-            stopRecordingMonitor()
-            recorderField?.stringValue = hotKeyController.shortcutDescription
-            statusLabel?.stringValue = "Shortcut reset"
-            statusLabel?.textColor = .systemGreen
-            statusLabel?.isHidden = false
+            stopRecording()
+            refreshShortcut()
+            shortcutStatusLabel?.stringValue = "Shortcut reset."
             onShortcutChanged?(HotKeyController.defaultShortcut)
         case let .failure(error):
-            showError(error.localizedDescription)
+            showShortcutError(error.localizedDescription)
             NSSound.beep()
         }
     }
 
-    @objc private func closeRecorder() {
-        closeShortcutRecorder()
+    @objc private func changeLaunchAtLogin() { _ = toggleLaunchAtLogin() }
+    @objc private func openLoginItemsSettings() { openLoginItems() }
+    #if APARTE_DIRECT_UPDATES
+    @objc private func checkForUpdates() {
+        guard updateController?.canCheckForUpdates == true else { refreshUpdates(); return }
+        onCheckForUpdates?()
+        refreshUpdates()
+    }
+    #endif
+
+    func windowDidBecomeKey(_ notification: Notification) {
+        refreshLoginState()
+        refreshUpdates()
     }
 
-    func windowWillClose(_ notification: Notification) {
-        isRecording = false
-        stopRecordingMonitor()
+    func windowDidResignKey(_ notification: Notification) {
+        stopRecording()
+        refreshShortcut()
     }
+
+    func windowWillClose(_ notification: Notification) { stopRecording() }
 
     private static func state(for status: SMAppService.Status) -> LaunchAtLoginState {
         switch status {
-        case .notRegistered:
-            return .disabled
-        case .enabled:
-            return .enabled
-        case .requiresApproval:
-            return .requiresApproval
-        case .notFound:
-            return .unavailable
-        @unknown default:
-            return .unavailable
+        case .notRegistered: return .disabled
+        case .enabled: return .enabled
+        case .requiresApproval: return .requiresApproval
+        case .notFound: return .unavailable
+        @unknown default: return .unavailable
         }
+    }
+}
+
+@MainActor
+private final class SettingsWindow: NSWindow {
+    var onCancel: (() -> Void)?
+    override func cancelOperation(_ sender: Any?) { onCancel?() }
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if event.modifierFlags.intersection(.deviceIndependentFlagsMask) == [.command],
+           event.charactersIgnoringModifiers?.lowercased() == "w" {
+            performClose(nil)
+            return true
+        }
+        return super.performKeyEquivalent(with: event)
     }
 }

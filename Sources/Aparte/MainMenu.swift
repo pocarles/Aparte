@@ -12,7 +12,7 @@ enum MainMenu {
             menu.addItem(parent)
         }
         section("Aparte", [MenuCommand.about.item(target: target)] + MenuCommand.updates.map { $0.item(target: target) }
-                + [.separator(), MenuCommand.hide.item(target: target), MenuCommand.quit.item()])
+                + [.separator(), MenuCommand.settings.item(target: target), .separator(), MenuCommand.hide.item(target: target), MenuCommand.quit.item()])
         section("File", [MenuCommand.save.item(target: target), MenuCommand.clear.item(target: target), .separator(),
                           MenuCommand.restore.item(target: target), MenuCommand.discard.item(target: target)])
         section("Edit", MenuCommand.editing.map { $0.item() } + [.separator(), MenuCommand.copyAll.item(target: target),
@@ -25,7 +25,6 @@ enum MainMenu {
         section("View", [MenuCommand.options.item(target: target), MenuCommand.counts.item(target: target), .separator(),
                           MenuCommand.zoomIn.item(target: target), plusWithoutShift, MenuCommand.zoomOut.item(target: target),
                           MenuCommand.resetZoom.item(target: target)])
-        section("Settings", [MenuCommand.shortcut.item(target: target), MenuCommand.login.item(target: target)])
         return menu
     }
 }

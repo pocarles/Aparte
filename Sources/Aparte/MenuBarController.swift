@@ -54,8 +54,7 @@ final class MenuBarController: NSObject {
         group("Editing", MenuCommand.editing.map { $0.item() })
         group("Recovery", [MenuCommand.restore, .discard].map { $0.item(target: target) })
         menu.addItem(.separator())
-        add(.shortcut)
-        add(.login)
+        add(.settings)
         let toggle = NSMenuItem(title: "Show or hide Aparte", action: #selector(AppDelegate.togglePad), keyEquivalent: "")
         toggle.target = target
         toggle.representedObject = (target as? AppDelegate)?.shortcutDescription ?? "⌥Space"

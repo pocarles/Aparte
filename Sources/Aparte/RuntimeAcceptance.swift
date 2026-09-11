@@ -71,6 +71,66 @@ enum RuntimeAcceptance {
                 check(preferences.launchAtLoginState == .disabled, "login-failure-keeps-system-state")
             } else { failed.append("login-failure-keeps-system-state") }
 
+            var openedLoginItems = 0
+            let settings = PreferencesController(hotKeyController: nil, launchAtLoginService: loginService,
+                                                 openLoginItems: { openedLoginItems += 1 })
+            loginService.shouldFail = false
+            settings.showSettings()
+            let settingsWindow = settings.window
+            func settingsContentFits() -> Bool {
+                guard let content = settings.window?.contentView,
+                      let stack = content.subviews.first as? NSStackView else { return false }
+                content.layoutSubtreeIfNeeded()
+                let visible = stack.arrangedSubviews.filter { !$0.isHidden }
+                let frames = visible.map { $0.convert($0.bounds, to: content) }
+                guard let bottom = frames.map(\.minY).min(), let top = frames.map(\.maxY).max() else { return false }
+                return abs(bottom - 24) <= 2 && abs(content.bounds.height - top - 24) <= 2
+                    && visible.allSatisfy { view in
+                        guard let label = view as? NSTextField, let cell = label.cell else { return true }
+                        let needed = cell.cellSize(forBounds: NSRect(x: 0, y: 0, width: label.bounds.width, height: 10_000)).height
+                        return label.bounds.height >= needed - 1
+                    }
+            }
+            check(settingsContentFits(), "settings-window-fits-visible-content")
+            check(settingsWindow?.title == "Settings" && settingsWindow?.isVisible == true
+                  && settingsWindow?.level == .normal && !(settingsWindow is NSPanel), "settings-is-normal-visible-window")
+            check(settingsWindow?.styleMask.contains(.closable) == true && !settings.isCapturingShortcut,
+                  "settings-opens-without-capturing-keys")
+            check(settings.shortcutButton?.isEnabled == false, "settings-unavailable-hotkey-is-disabled")
+            settings.closeSettings()
+            loginService.status = .enabled
+            settings.showSettings()
+            check(settings.window === settingsWindow && settings.window?.isVisible == true, "settings-reuses-window-on-reopen")
+            check(settings.loginButton?.state == .on, "settings-refreshes-login-on-reopen")
+            settings.loginButton?.performClick(nil)
+            check(settings.launchAtLoginState == .disabled && settings.loginButton?.state == .off,
+                  "settings-login-control-disables-service")
+            loginService.registrationNeedsApproval = true
+            settings.loginButton?.performClick(nil)
+            check(settings.loginButton?.state == .mixed && settings.loginApprovalButton?.isHidden == false,
+                  "settings-login-approval-is-visible")
+            check(settingsContentFits(), "settings-window-fits-approval-content")
+            settings.loginApprovalButton?.performClick(nil)
+            check(openedLoginItems == 1, "settings-opens-system-login-items")
+            settings.loginButton?.performClick(nil)
+            check(settings.launchAtLoginState == .disabled && settings.loginApprovalButton?.isHidden == true,
+                  "settings-pending-login-can-be-disabled")
+            loginService.shouldFail = true
+            settings.loginButton?.performClick(nil)
+            check(settings.loginButton?.state == .off && settings.loginStatusLabel?.textColor == .systemRed
+                  && settings.lastLaunchAtLoginError != nil, "settings-login-error-stays-visible-with-system-state")
+            check(settingsContentFits(), "settings-window-fits-error-content")
+            loginService.shouldFail = false
+            _ = settings.setLaunchAtLoginEnabled(false)
+            loginService.status = .notFound
+            settings.showSettings()
+            check(settings.loginButton?.isEnabled == false && settings.loginStatusLabel?.stringValue.contains("unavailable") == true,
+                  "settings-unavailable-login-is-explained")
+            check(settingsContentFits(), "settings-window-fits-wrapped-unavailable-content")
+            loginService.status = .notRegistered
+            settings.closeSettings()
+            check(settings.window?.isVisible == false, "settings-closes-window")
+
             defaults.set(-1, forKey: "Aparte.globalShortcut.keyCode")
             defaults.set(-1, forKey: "Aparte.globalShortcut.modifiers")
             let hotKey = HotKeyController(action: {}, defaults: defaults)
@@ -99,6 +159,51 @@ enum RuntimeAcceptance {
                 check(reopenedHotKey.activeShortcut == candidate, "shortcut-restores-on-relaunch")
                 reopenedHotKey.invalidate()
             } else { failed.append("shortcut-registers-new-choice") }
+
+            let recordingDefaultsName = "AparteSettingsAcceptance-\(UUID().uuidString)"
+            let recordingDefaults = UserDefaults(suiteName: recordingDefaultsName)!
+            defer { recordingDefaults.removePersistentDomain(forName: recordingDefaultsName) }
+            let recordingHotKey = HotKeyController(action: {}, defaults: recordingDefaults)
+            let recorder = PreferencesController(hotKeyController: recordingHotKey, launchAtLoginService: loginService)
+            recorder.showSettings()
+            let recordingWindow = recorder.window!
+            let previousShortcut = recordingHotKey.currentShortcut
+            recorder.shortcutButton?.performClick(nil)
+            check(recorder.isCapturingShortcut, "settings-starts-integrated-shortcut-recording")
+            let invalidRecording = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
+                windowNumber: recordingWindow.windowNumber, context: nil, characters: "j", charactersIgnoringModifiers: "j",
+                isARepeat: false, keyCode: UInt16(kVK_ANSI_J))!
+            check(recorder.handleShortcutEvent(invalidRecording) && recorder.isCapturingShortcut
+                  && recordingHotKey.currentShortcut == previousShortcut && recorder.shortcutStatusLabel?.textColor == .systemRed,
+                  "settings-invalid-shortcut-keeps-recording-and-existing-choice")
+            let escapeRecording = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
+                windowNumber: recordingWindow.windowNumber, context: nil, characters: "\u{1b}", charactersIgnoringModifiers: "\u{1b}",
+                isARepeat: false, keyCode: 53)!
+            check(recorder.handleShortcutEvent(escapeRecording) && !recorder.isCapturingShortcut
+                  && recordingWindow.isVisible && recordingHotKey.currentShortcut == previousShortcut,
+                  "settings-escape-cancels-capture-without-closing-window")
+            recorder.shortcutButton?.performClick(nil)
+            let recordedEvent = NSEvent.keyEvent(with: .keyDown, location: .zero,
+                modifierFlags: [.command, .option, .control, .shift], timestamp: 0,
+                windowNumber: recordingWindow.windowNumber, context: nil, characters: "j", charactersIgnoringModifiers: "j",
+                isARepeat: false, keyCode: UInt16(kVK_ANSI_J))!
+            check(recorder.handleShortcutEvent(recordedEvent) && !recorder.isCapturingShortcut
+                  && recordingHotKey.currentShortcut == candidate && recordingWindow.isVisible,
+                  "settings-records-and-saves-shortcut-in-place")
+            recorder.resetButton?.performClick(nil)
+            check(recordingHotKey.currentShortcut == HotKeyController.defaultShortcut, "settings-resets-shortcut-to-option-space")
+            recorder.shortcutButton?.performClick(nil)
+            recorder.closeSettings()
+            check(!recorder.isCapturingShortcut && !recorder.handleShortcutEvent(recordedEvent), "settings-close-stops-capture")
+            recorder.showSettings()
+            check(recorder.window === recordingWindow && !recorder.isCapturingShortcut, "settings-reopen-does-not-restart-capture")
+            recordingWindow.cancelOperation(nil)
+            check(!recordingWindow.isVisible, "settings-escape-outside-capture-closes-window")
+            recorder.showSettings()
+            let closeSettingsEvent = shortcutEvent("w", modifiers: [.command], window: recordingWindow)
+            check(recordingWindow.performKeyEquivalent(with: closeSettingsEvent) && !recordingWindow.isVisible,
+                  "settings-command-w-closes-window")
+            recordingHotKey.invalidate()
 
             let optionsTarget = AcceptanceOptionsTarget()
             let pad = PadWindowController(document: document, defaults: defaults,
@@ -512,6 +617,20 @@ enum RuntimeAcceptance {
             let bindings = localItems.map { "\($0.keyEquivalentModifierMask.rawValue):\($0.keyEquivalent)" }
             check(Set(bindings).count == bindings.count, "writing-shortcuts-have-no-duplicates")
             let mainItems = leaves(MainMenu.make(target: optionsTarget))
+            let applicationMenu = MainMenu.make(target: optionsTarget)
+            check(!applicationMenu.items.contains { $0.submenu?.title == "Settings" }, "settings-has-no-top-level-menu")
+            let applicationSettings = applicationMenu.items.first?.submenu?.items.filter { $0.action == #selector(AppDelegate.showSettings) } ?? []
+            check(applicationSettings.count == 1, "settings-is-in-aparte-application-menu")
+            for menu in [applicationMenu, MenuBarController.makeOptionsMenu(target: optionsTarget),
+                         MenuBarController.makeOptionsMenu(target: optionsTarget, forPad: false)] {
+                let items = leaves(menu)
+                let settingsItems = items.filter { $0.action == #selector(AppDelegate.showSettings) }
+                check(settingsItems.count == 1 && settingsItems[0].title == "Settings…"
+                      && settingsItems[0].keyEquivalent == "," && settingsItems[0].keyEquivalentModifierMask == [.command],
+                      "settings-one-standard-command-per-menu")
+                check(!items.contains { $0.title.hasPrefix("Keyboard shortcut") || $0.title.hasPrefix("Launch at login") },
+                      "settings-menus-omit-scattered-preference-actions")
+            }
             #if APARTE_DIRECT_UPDATES
             let updaterDelegate = AppDelegate()
             let updaterProbe = AcceptanceUpdater()
@@ -529,9 +648,30 @@ enum RuntimeAcceptance {
                     check(updaterDelegate.validateMenuItem(item), "update-command-enabled-when-available")
                 }
             }
+            settings.updateController = updaterProbe
+            settings.onCheckForUpdates = { updaterDelegate.checkForUpdates() }
+            updaterProbe.canCheckForUpdates = false
+            settings.showSettings()
+            check(settings.updateButton?.isEnabled == false, "settings-update-disabled-when-unavailable")
+            updaterProbe.canCheckForUpdates = true
+            settings.showSettings()
+            check(settings.updateButton?.isEnabled == true && settings.updateButton?.title == "Check for Updates…",
+                  "settings-direct-update-button-is-available")
+            settings.updateButton?.performClick(nil)
+            check(updaterProbe.checks == 1, "settings-update-button-dispatches-once")
+            updaterProbe.canCheckForUpdates = false
+            settings.updateButton?.performClick(nil)
+            check(updaterProbe.checks == 1, "settings-update-button-revalidates-before-dispatch")
+            updaterProbe.canCheckForUpdates = true
+            updaterProbe.checks = 0
+            settings.closeSettings()
             updaterDelegate.checkForUpdates()
             check(updaterProbe.checks == 1, "update-command-dispatches-once-without-network-in-acceptance")
             #else
+            func buttonTitles(_ view: NSView) -> [String] {
+                (view as? NSButton).map { [$0.title] } ?? view.subviews.flatMap(buttonTitles)
+            }
+            check(!buttonTitles(settings.window!.contentView!).contains("Check for Updates…"), "settings-non-direct-omits-updater")
             check(MenuCommand.updates.isEmpty && !mainItems.contains { $0.title == "Check for Updates…" }
                   && !commandItems.contains { $0.title == "Check for Updates…" }, "non-direct-menus-omit-updater")
             #endif
@@ -604,15 +744,15 @@ enum RuntimeAcceptance {
                 runInteractivePreview(for: 120)
             }
 
-            if ProcessInfo.processInfo.arguments.contains("--preview-shortcut") {
+            if ProcessInfo.processInfo.arguments.contains("--preview-shortcut") || ProcessInfo.processInfo.arguments.contains("--preview-settings") {
                 pad.hide()
                 overlays.hide()
                 let previewHotKey = HotKeyController(action: {}, defaults: defaults)
                 let recorder = PreferencesController(hotKeyController: previewHotKey, launchAtLoginService: loginService)
-                recorder.showShortcutRecorder()
+                recorder.showSettings()
                 runInteractivePreview(for: 45)
                 print("Recorder choice: \(previewHotKey.shortcutDescription)")
-                recorder.closeShortcutRecorder()
+                recorder.closeSettings()
                 previewHotKey.invalidate()
             }
 
@@ -735,8 +875,7 @@ private final class AcceptanceOptionsTarget: NSObject, NSMenuItemValidation {
     @objc func copyAll() { }
     @objc func clearPad() { pad?.clearPad() }
     @objc func toggleOptions() { pad?.toggleOptions() }
-    @objc func configureShortcut() { }
-    @objc func toggleLaunchAtLogin() { }
+    @objc func showSettings() { }
     @objc func showAbout() { }
     @objc func hidePad() { pad?.hide() }
     @objc func togglePad() { }

@@ -1,6 +1,5 @@
 import AppKit
 import AparteCore
-import ServiceManagement
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
@@ -35,6 +34,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
         hotKeyController = HotKeyController(action: { [weak self] in self?.togglePad() })
         preferencesController = PreferencesController(hotKeyController: hotKeyController)
+        #if APARTE_DIRECT_UPDATES
+        preferencesController?.updateController = updateController
+        preferencesController?.onCheckForUpdates = { [weak self] in self?.checkForUpdates() }
+        #endif
         hotKeyController?.onShortcutChanged = { [weak self] _ in
             self?.menuBarController?.updateShortcutDescription()
         }
@@ -77,7 +80,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     func applicationWillTerminate(_ notification: Notification) {
         documentController?.saveNow()
         hotKeyController?.invalidate()
-        preferencesController?.closeShortcutRecorder()
+        preferencesController?.closeSettings()
         if let escapeMonitor {
             NSEvent.removeMonitor(escapeMonitor)
         }
@@ -93,7 +96,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
 
     @objc func showPad() {
-        preferencesController?.closeShortcutRecorder()
+        preferencesController?.closeSettings()
         guard let padController else { return }
         overlays.show()
         padController.show()
@@ -134,33 +137,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         return hotKeyController.isRegistered ? hotKeyController.shortcutDescription : "Shortcut unavailable"
     }
 
-    @objc func configureShortcut() {
-        hidePad()
-        preferencesController?.showShortcutRecorder()
-    }
-
-    @objc func toggleLaunchAtLogin() {
-        guard let result = preferencesController?.toggleLaunchAtLogin() else { return }
-        let alert: NSAlert
-        switch result {
-        case .success(.requiresApproval):
-            alert = NSAlert()
-            alert.messageText = "Allow Aparte to launch at login"
-            alert.informativeText = "macOS needs your approval in Login Items. You can turn launch at login off again from Aparte's menu."
-            alert.addButton(withTitle: "Open Login Items")
-            alert.addButton(withTitle: "Later")
-        case let .failure(error):
-            alert = NSAlert(error: error)
-            alert.messageText = "Aparte could not change launch at login."
-        default:
-            return
-        }
-        alert.window.level = NSWindow.Level(rawValue: NSWindow.Level.popUpMenu.rawValue + 1)
-        NSApp.activate(ignoringOtherApps: true)
-        if alert.runModal() == .alertFirstButtonReturn,
-           case .success(.requiresApproval) = result {
-            SMAppService.openSystemSettingsLoginItems()
-        }
+    @objc func showSettings() {
+        padController?.hide()
+        overlays.hide()
+        documentController?.saveNow()
+        preferencesController?.showSettings()
     }
 
     @objc func copyPlainText() { padController?.copyPlainText() }
@@ -194,12 +175,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         #endif
         case #selector(toggleCounts):
             menuItem.state = padController?.showsCounts == true ? .on : .off
-        case #selector(configureShortcut):
-            menuItem.title = hotKeyController?.isRegistered == true ? "Keyboard shortcut…" : "Keyboard shortcut unavailable…"
-        case #selector(toggleLaunchAtLogin):
-            let needsApproval = preferencesController?.launchAtLoginRequiresApproval == true
-            menuItem.title = needsApproval ? "Launch at login (approval required)…" : "Launch at login"
-            menuItem.state = needsApproval ? .mixed : (preferencesController?.launchAtLoginEnabled == true ? .on : .off)
         case #selector(restoreLastCleared), #selector(discardRecovery):
             return padController?.hasRecovery == true
         default:

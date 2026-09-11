@@ -11,8 +11,8 @@ local document is waiting when you come back.
 [Download the latest release](https://github.com/pocarles/Aparte/releases/latest/download/Aparte.dmg)
 or read the [product page](https://pocarles.com/aparte/).
 
-Version 1.3.0 adds daily checks for signed updates to direct-download builds, with Check for Updates… in the Aparte menus. Your writing stays on your Mac.
-Read the [release notes](https://github.com/pocarles/Aparte/releases/tag/v1.3.0).
+Version 1.4.0 adds a native Settings window for the keyboard shortcut, launch at login, and update checks. Direct-download builds check for signed updates daily. Your writing stays on your Mac.
+Read the [release notes](https://github.com/pocarles/Aparte/releases/tag/v1.4.0).
 
 ## What it does
 
@@ -72,8 +72,7 @@ Shortcuts work while writing and while the options card is open.
 | Show or hide word and character count | Command-Shift-W |
 | Zoom in / out | Command-plus / Command-minus |
 | Reset text size | Command-0 |
-| Configure the global shortcut | Command-comma |
-| Toggle launch at login | Command-Option-L |
+| Open Settings | Command-comma |
 | Bold / italic / underline | Command-B / I / U |
 | Heading | Command-Option-1 |
 | Bulleted / numbered list | Command-Shift-8 / 7 |
@@ -91,7 +90,8 @@ that copy still asks for confirmation.
 ## Small controls, when you need them
 
 Click the three dots at the bottom right of the pad to show the word and character count, change
-text size, choose a keyboard shortcut, or turn launch at login on or off. Options
+text size, or open Settings. Settings contains the global keyboard shortcut and launch-at-login
+controls. Direct-download builds also have a Check for Updates button there. Options
 open in a small card inside the pad. Choose an option, click outside the card, or
 press Escape to close it and return to your writing. The
 counter starts hidden. It counts the selected passage when you select text,

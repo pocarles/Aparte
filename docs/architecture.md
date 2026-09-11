@@ -82,4 +82,4 @@ uses normalized editor content, with an explicit plain-text option.
 
 Shortcut changes register the replacement before retiring the previous hotkey.
 Launch at login uses Apple's Service Management API and reads its current status
-when the menu is opened. Neither feature introduces polling or a helper process.
+when Settings opens or regains focus. A single reusable, normal AppKit Settings window contains the shortcut recorder and login controls; errors stay beside their controls. Command-comma and Settings… in the application, status, and writing-options menus open the same window after hiding the pad and saving the document. Shortcut recording begins only when requested and stops when cancelled, saved, the window closes, or focus leaves it. Direct builds include an update button that uses the same updater availability and dispatch as the menus. Neither feature introduces polling or a helper process.
