@@ -3,6 +3,24 @@ import XCTest
 @testable import AparteCore
 
 final class PasteNormalizerTests: XCTestCase {
+    func testGeneratedMarkerSeparatorsDoNotChangePrefixMatching() {
+        for marker in ["7.", "•"] {
+            for generated in [marker, "\t" + marker, marker + "\t", " \t" + marker + "\t "] {
+                for leadingTab in ["", "\t"] {
+                    let prefix = leadingTab + marker + "\t"
+                    let line = prefix + "One\tinside\t"
+                    let length = PasteNormalizer.nativeListPrefixLength(in: line as NSString, generatedMarker: generated)
+                    XCTAssertEqual(length, prefix.utf16.count)
+                    XCTAssertEqual((line as NSString).substring(from: length), "One\tinside\t")
+                }
+                for line in [marker + "x\tOne", "\t" + marker + "x\tOne", "\tuser\ttabs", marker + " One"] {
+                    XCTAssertEqual(PasteNormalizer.nativeListPrefixLength(in: line as NSString, generatedMarker: generated), 0)
+                }
+            }
+        }
+        XCTAssertEqual(PasteNormalizer.nativeListPrefixLength(in: "\t\tOne", generatedMarker: " \t "), 0)
+    }
+
     func testNativeListMarkerShapesNormalizeWithoutRelyingOnRTFImporter() {
         for format: NSTextList.MarkerFormat in [.decimal, .disc] {
             for leadingTab in ["", "\t"] {
@@ -60,7 +78,11 @@ final class PasteNormalizerTests: XCTestCase {
         let data = try text.data(from: NSRange(location: 0, length: text.length), documentAttributes: [.documentType: NSAttributedString.DocumentType.rtf])
         board.setData(data, forType: .rtf)
         let result = try XCTUnwrap(PasteNormalizer.read(from: board))
-        XCTAssertEqual(result.string, "7. One\tinside\n8. Two")
+        let imported = try NSAttributedString(data: data, options: [.documentType: NSAttributedString.DocumentType.rtf], documentAttributes: nil)
+        let importedStyle = imported.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle
+        let importedMarker = importedStyle?.textLists.first?.marker(forItemNumber: 7) ?? ""
+        XCTAssertEqual(result.string, "7. One\tinside\n8. Two",
+                       "Imported marker: \(String(reflecting: importedMarker)); imported text: \(String(reflecting: imported.string))")
         XCTAssertEqual(ParagraphFormatting.plainText(from: result), result.string)
     }
 

@@ -69,12 +69,7 @@ public enum PasteNormalizer {
                 ordinal = previousList === list ? (ordinal == Int.max ? Int.max : ordinal + 1) : list.startingItemNumber
                 previousList = list
                 let line = source.substring(with: paragraph) as NSString
-                var prefixLength = 0
-                let generated = list.marker(forItemNumber: ordinal)
-                for prefix in ["\t\(generated)\t", "\(generated)\t"] where line.hasPrefix(prefix) {
-                    prefixLength = prefix.utf16.count
-                    break
-                }
+                let prefixLength = nativeListPrefixLength(in: line, generatedMarker: list.marker(forItemNumber: ordinal))
                 let marker = kind == .ordered ? "\(ordinal). " : "• "
                 replacements.append((NSRange(location: cursor, length: prefixLength), marker))
                 output.addAttribute(.aparteListKind, value: kind.rawValue, range: paragraph)
@@ -88,6 +83,17 @@ public enum PasteNormalizer {
             output.replaceCharacters(in: range, with: NSAttributedString(string: marker, attributes: attributes))
         }
         return ParagraphFormatting.editorText(from: output)
+    }
+
+    static func nativeListPrefixLength(in line: NSString, generatedMarker: String) -> Int {
+        // Some importers include the list's separators in the generated marker.
+        // Trim that metadata only; content tabs in the paragraph stay untouched.
+        let marker = generatedMarker.trimmingCharacters(in: .whitespaces)
+        guard !marker.isEmpty else { return 0 }
+        for prefix in ["\t\(marker)\t", "\(marker)\t"] where line.hasPrefix(prefix) {
+            return prefix.utf16.count
+        }
+        return 0
     }
 
     public static func read(from pasteboard: NSPasteboard) -> NSAttributedString? {
