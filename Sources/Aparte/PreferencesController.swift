@@ -207,12 +207,22 @@ final class PreferencesController: NSObject, NSWindowDelegate {
 
     private func fitWindowToContent() {
         guard let window, let content = window.contentView, let settingsStack else { return }
+        // Revealing an arranged view can defer NSStackView's constraints until the
+        // next layout pass. Settle them before fitting, including on macOS 15.
+        settingsStack.invalidateIntrinsicContentSize()
+        settingsStack.needsUpdateConstraints = true
+        content.updateConstraintsForSubtreeIfNeeded()
+        settingsStack.needsLayout = true
         content.layoutSubtreeIfNeeded()
-        let height = ceil(settingsStack.fittingSize.height) + 48
-        guard abs(content.bounds.height - height) > 0.5 else { return }
-        let top = window.frame.maxY
-        window.setContentSize(NSSize(width: 460, height: height))
-        window.setFrameOrigin(NSPoint(x: window.frame.minX, y: top - window.frame.height))
+        let visibleFrames = settingsStack.arrangedSubviews.filter { !$0.isHidden }
+            .map { $0.convert($0.bounds, to: settingsStack) }
+        let visibleHeight = (visibleFrames.map(\.maxY).max() ?? 0) - (visibleFrames.map(\.minY).min() ?? 0)
+        let height = ceil(max(settingsStack.fittingSize.height, visibleHeight)) + 48
+        if abs(content.bounds.height - height) > 0.5 {
+            let top = window.frame.maxY
+            window.setContentSize(NSSize(width: 460, height: height))
+            window.setFrameOrigin(NSPoint(x: window.frame.minX, y: top - window.frame.height))
+        }
         content.layoutSubtreeIfNeeded()
     }
 

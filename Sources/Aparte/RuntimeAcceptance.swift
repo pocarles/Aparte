@@ -82,14 +82,29 @@ enum RuntimeAcceptance {
                       let stack = content.subviews.first as? NSStackView else { return false }
                 content.layoutSubtreeIfNeeded()
                 let visible = stack.arrangedSubviews.filter { !$0.isHidden }
-                let frames = visible.map { $0.convert($0.bounds, to: content) }
-                guard let bottom = frames.map(\.minY).min(), let top = frames.map(\.maxY).max() else { return false }
-                return abs(bottom - 24) <= 2 && abs(content.bounds.height - top - 24) <= 2
-                    && visible.allSatisfy { view in
-                        guard let label = view as? NSTextField, let cell = label.cell else { return true }
-                        let needed = cell.cellSize(forBounds: NSRect(x: 0, y: 0, width: label.bounds.width, height: 10_000)).height
-                        return label.bounds.height >= needed - 1
+                func visibleControls(_ views: [NSView]) -> [NSView] {
+                    views.filter { !$0.isHidden }.flatMap { view in
+                        [view] + ((view as? NSStackView).map { visibleControls($0.arrangedSubviews) } ?? [])
                     }
+                }
+                let controls = visibleControls(visible)
+                let frames = controls.map { $0.convert($0.bounds, to: content) }
+                guard let bottom = frames.map(\.minY).min(), let top = frames.map(\.maxY).max() else { return false }
+                let topMargin = content.bounds.height - top
+                // Native controls have OS-specific alignment insets. Require a
+                // compact margin and full visibility, not identical frame pixels.
+                let compact = (12...40).contains(bottom) && (12...40).contains(topMargin)
+                let contained = frames.allSatisfy { content.bounds.insetBy(dx: -0.5, dy: -0.5).contains($0) }
+                let labelsFit = controls.allSatisfy { view in
+                    guard let label = view as? NSTextField, let cell = label.cell else { return true }
+                    let needed = cell.cellSize(forBounds: NSRect(x: 0, y: 0, width: label.bounds.width, height: 10_000)).height
+                    return label.bounds.height >= needed - 1
+                }
+                let fits = compact && contained && labelsFit
+                if !fits {
+                    print("Settings layout: content=\(content.bounds.size), bottom=\(bottom), top=\(topMargin), contained=\(contained), labelsFit=\(labelsFit)")
+                }
+                return fits
             }
             check(settingsContentFits(), "settings-window-fits-visible-content")
             check(settingsWindow?.title == "Settings" && settingsWindow?.isVisible == true
