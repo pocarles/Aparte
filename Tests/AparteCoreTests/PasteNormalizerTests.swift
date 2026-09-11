@@ -3,6 +3,43 @@ import XCTest
 @testable import AparteCore
 
 final class PasteNormalizerTests: XCTestCase {
+    func testNativeListMarkerShapesNormalizeWithoutRelyingOnRTFImporter() {
+        for format: NSTextList.MarkerFormat in [.decimal, .disc] {
+            for leadingTab in ["", "\t"] {
+                let list = NSTextList(markerFormat: format, options: 0)
+                list.startingItemNumber = 7
+                let style = NSMutableParagraphStyle()
+                style.textLists = [list]
+                let source = "\(leadingTab)\(list.marker(forItemNumber: 7))\tOne\tinside\n\(leadingTab)\(list.marker(forItemNumber: 8))\tTwo\ttail"
+                let result = PasteNormalizer.normalized(NSAttributedString(string: source, attributes: [.paragraphStyle: style]))
+                let ordered = format == .decimal
+                let expected = ordered ? "7. One\tinside\n8. Two\ttail" : "• One\tinside\n• Two\ttail"
+                XCTAssertEqual(result.string, expected)
+                XCTAssertEqual(ParagraphFormatting.plainText(from: result), expected)
+                XCTAssertEqual(MarkdownCodec.markdown(from: result), ordered ? expected : "- One\tinside\n- Two\ttail")
+                let kind = ordered ? AparteListKind.ordered : .unordered
+                for word in ["One", "Two"] {
+                    let index = (result.string as NSString).range(of: word).location
+                    XCTAssertEqual(result.attribute(.aparteListKind, at: index, effectiveRange: nil) as? String, kind.rawValue)
+                }
+                let plain = PasteNormalizer.normalized(NSAttributedString(string: source))
+                XCTAssertEqual(plain.string, source)
+                XCTAssertNil(plain.attribute(.aparteListKind, at: 0, effectiveRange: nil))
+            }
+        }
+    }
+
+    func testNativeListOnlyRemovesAnExactGeneratedMarkerPrefix() {
+        let list = NSTextList(markerFormat: .decimal, options: 0)
+        list.startingItemNumber = 7
+        let style = NSMutableParagraphStyle()
+        style.textLists = [list]
+        for source in ["7.x\tOne\tinside", "\t7.x\tOne\tinside", "\tuser\ttabs"] {
+            let result = PasteNormalizer.normalized(NSAttributedString(string: source, attributes: [.paragraphStyle: style]))
+            XCTAssertEqual(result.string, "7. " + source)
+        }
+    }
+
     func testHTMLListPasteKeepsNumbersAndOnlyReplacesGeneratedTabs() throws {
         let board = NSPasteboard.withUniqueName()
         defer { board.releaseGlobally() }

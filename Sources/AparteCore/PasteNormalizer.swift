@@ -54,7 +54,7 @@ public enum PasteNormalizer {
                 output.addAttribute(.aparteListKind, value: kind.rawValue, range: range)
             }
         }
-        // Cocoa lists use a leading tab, a generated marker, then another tab.
+        // Cocoa list markers end with a tab; some macOS versions also prepend one.
         // Replace that prefix only when the source paragraph is a native list.
         let source = input.string as NSString
         var replacements: [(NSRange, String)] = []
@@ -70,14 +70,10 @@ public enum PasteNormalizer {
                 previousList = list
                 let line = source.substring(with: paragraph) as NSString
                 var prefixLength = 0
-                if line.hasPrefix("\t") {
-                    let delimiter = line.range(of: "\t", range: NSRange(location: 1, length: line.length - 1))
-                    if delimiter.location != NSNotFound {
-                        let generated = line.substring(with: NSRange(location: 1, length: delimiter.location - 1))
-                        if generated == list.marker(forItemNumber: ordinal) {
-                            prefixLength = NSMaxRange(delimiter)
-                        }
-                    }
+                let generated = list.marker(forItemNumber: ordinal)
+                for prefix in ["\t\(generated)\t", "\(generated)\t"] where line.hasPrefix(prefix) {
+                    prefixLength = prefix.utf16.count
+                    break
                 }
                 let marker = kind == .ordered ? "\(ordinal). " : "• "
                 replacements.append((NSRange(location: cursor, length: prefixLength), marker))
