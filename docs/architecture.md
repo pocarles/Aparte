@@ -53,7 +53,7 @@ The autosave debounce uses a one-shot `DispatchWorkItem`. It is canceled and rep
 
 Aparte has no external package dependency, web view, network request, updater, account, cloud sync, analytics, or telemetry. It links only Apple system frameworks through AppKit, Foundation, Uniform Type Identifiers, and Carbon.
 
-The privacy manifest declares no tracking, collected data, tracking domains, or required-reason API use. If the code later adds one of those behaviors, the manifest and App Store privacy answers must change together.
+The privacy manifest declares no tracking, collected data, or tracking domains. It declares UserDefaults with reason CA92.1 for preferences stored by Aparte. The HTML paste importer denies every subsidiary resource request, including remote images and stylesheets.
 
 ## Packaging
 

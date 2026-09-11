@@ -12,6 +12,7 @@ public enum ParagraphFormatting {
         let source = text.string as NSString
         var result: [Block] = []
         var cursor = 0
+        var orderedNumber: Int?
         while cursor < source.length {
             var end = 0
             var contentsEnd = 0
@@ -22,15 +23,52 @@ public enum ParagraphFormatting {
             if !line.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 let attributes = text.attributes(at: cursor, effectiveRange: nil)
                 let kind = (attributes[.aparteListKind] as? String).flatMap(AparteListKind.init(rawValue:))
+                let inlineOnly = attributes[.aparteInlineOnly] as? Bool == true
+                var marker = inlineOnly ? nil : ListContinuation.marker(in: line, listKind: kind)
+                if let item = marker, item.kind == .ordered {
+                    let number = item.number ?? orderedNumber.map { $0 == Int.max ? Int.max : $0 + 1 } ?? 1
+                    marker = ListContinuation.Marker(kind: .ordered, number: number, prefix: item.prefix)
+                    orderedNumber = number
+                } else { orderedNumber = nil }
                 result.append(Block(
                     range: range,
-                    marker: ListContinuation.marker(in: line, listKind: kind),
-                    headingLevel: attributes[.aparteHeadingLevel] as? Int ?? 0
+                    marker: marker,
+                    headingLevel: inlineOnly ? 0 : attributes[.aparteHeadingLevel] as? Int ?? 0
                 ))
-            }
+            } else { orderedNumber = nil }
             cursor = end
         }
         return result
+    }
+
+    /// Block meaning belongs to complete paragraphs, not copied fragments.
+    public static func copyText(from text: NSAttributedString, range: NSRange) -> NSAttributedString {
+        let output = NSMutableAttributedString(attributedString: text.attributedSubstring(from: range))
+        let source = text.string as NSString
+        var cursor = range.location
+        while cursor < NSMaxRange(range) {
+            var start = 0
+            var end = 0
+            var contentsEnd = 0
+            source.getParagraphStart(&start, end: &end, contentsEnd: &contentsEnd,
+                                     for: NSRange(location: cursor, length: 0))
+            if range.location > start || NSMaxRange(range) < contentsEnd {
+                let intersection = NSIntersectionRange(range, NSRange(location: start, length: end - start))
+                let fragment = NSRange(location: intersection.location - range.location, length: intersection.length)
+                output.enumerateAttributes(in: fragment) { attributes, run, _ in
+                    if attributes[.aparteHeadingLevel] != nil {
+                        let font = NSFontManager.shared.convert(AparteTypography.bodyFont,
+                                                               toHaveTrait: AparteTypography.inlineTraits(in: attributes))
+                        output.addAttribute(.font, value: font, range: run)
+                    }
+                }
+                output.removeAttribute(.aparteListKind, range: fragment)
+                output.removeAttribute(.aparteHeadingLevel, range: fragment)
+                output.addAttribute(.aparteInlineOnly, value: true, range: fragment)
+            }
+            cursor = end
+        }
+        return output
     }
 
     /// Empty source lines are represented by paragraph spacing, not extra rows.
@@ -62,7 +100,7 @@ public enum ParagraphFormatting {
             }
             let line = source.substring(with: block.range)
             if let marker = block.marker, marker.prefix.isEmpty {
-                result += marker.kind == .unordered ? "• " : "1. "
+                result += marker.kind == .unordered ? "• " : "\(marker.number ?? 1). "
             }
             result += line
             previousWasList = block.marker != nil
@@ -109,8 +147,8 @@ public enum ParagraphFormatting {
             if traits.contains(.boldFontMask) { segment = "<strong>\(segment)</strong>" }
             if traits.contains(.italicFontMask) { segment = "<em>\(segment)</em>" }
             if (attributes[.underlineStyle] as? Int ?? 0) != 0 { segment = "<u>\(segment)</u>" }
-            let link = (attributes[.link] as? URL)?.absoluteString ?? attributes[.link] as? String
-            if let link { segment = "<a href=\"\(escapeHTML(link))\">\(segment)</a>" }
+            let link = ((attributes[.link] as? URL)?.absoluteString ?? attributes[.link] as? String).flatMap(LinkURLNormalizer.normalize)
+            if let link { segment = "<a href=\"\(escapeHTML(link.absoluteString))\">\(segment)</a>" }
             result += segment
         }
         return result

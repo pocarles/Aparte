@@ -3,6 +3,47 @@ import XCTest
 @testable import AparteCore
 
 final class PasteNormalizerTests: XCTestCase {
+    func testHTMLListPasteKeepsNumbersAndOnlyReplacesGeneratedTabs() throws {
+        let board = NSPasteboard.withUniqueName()
+        defer { board.releaseGlobally() }
+        board.setString("<ol start=\"7\"><li>One</li><li>Two</li></ol><ul><li>Three</li></ul>", forType: .html)
+        let result = try XCTUnwrap(PasteNormalizer.read(from: board))
+        XCTAssertEqual(result.string.trimmingCharacters(in: .newlines), "7. One\n8. Two\n• Three")
+        XCTAssertEqual(MarkdownCodec.markdown(from: result).trimmingCharacters(in: .newlines), "7. One\n8. Two\n- Three")
+    }
+
+    func testRTFListsRetainStartingNumberAndContentTabs() throws {
+        let list = NSTextList(markerFormat: .decimal, options: 0)
+        list.startingItemNumber = 7
+        let style = NSMutableParagraphStyle()
+        style.textLists = [list]
+        let text = NSAttributedString(string: "\t7.\tOne\tinside\n\t8.\tTwo", attributes: [.paragraphStyle: style])
+        let board = NSPasteboard.withUniqueName()
+        defer { board.releaseGlobally() }
+        let data = try text.data(from: NSRange(location: 0, length: text.length), documentAttributes: [.documentType: NSAttributedString.DocumentType.rtf])
+        board.setData(data, forType: .rtf)
+        let result = try XCTUnwrap(PasteNormalizer.read(from: board))
+        XCTAssertEqual(result.string, "7. One\tinside\n8. Two")
+        XCTAssertEqual(ParagraphFormatting.plainText(from: result), result.string)
+    }
+
+    func testUserAuthoredTabsAndNonWebLinkLabelsSurviveNormalization() {
+        let text = NSAttributedString(string: "\tuser\ttabs", attributes: [.link: "javascript:alert(1)"])
+        let result = PasteNormalizer.normalized(text)
+        XCTAssertEqual(result.string, text.string)
+        XCTAssertNil(result.attribute(.link, at: 0, effectiveRange: nil))
+    }
+
+    func testHTMLResourceDelegateDeniesEveryRequestAndRedirect() {
+        let delegate = DenyHTMLResources()
+        XCTAssertTrue(delegate.responds(to: NSSelectorFromString("webView:resource:willSendRequest:redirectResponse:fromDataSource:")))
+        for url in ["https://example.com/image.png", "http://127.0.0.1/style.css", "file:///tmp/image.svg", "data:image/svg+xml,test"] {
+            let request = URLRequest(url: URL(string: url)!)
+            XCTAssertNil(delegate.webView(NSObject(), resource: NSObject(), willSendRequest: request, redirectResponse: nil, fromDataSource: NSObject()))
+            XCTAssertNil(delegate.webView(NSObject(), resource: NSObject(), willSendRequest: request, redirectResponse: URLResponse(), fromDataSource: NSObject()))
+        }
+    }
+
     func testRichPasteKeepsMeaningAndDropsForeignStyling() {
         let source = NSMutableAttributedString(string: "Title and link")
         source.addAttributes(

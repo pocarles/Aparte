@@ -2,9 +2,10 @@ import AppKit
 
 public enum MarkdownCodec {
     private struct InlineToken {
-        let range: Range<String.Index>
-        let visible: String
-        let attributes: [NSAttributedString.Key: Any]
+        let range: NSRange
+        let kind: Int
+        var partner: Int?
+        var link: URL?
     }
 
     public static func render(_ markdown: String) -> NSAttributedString {
@@ -17,13 +18,13 @@ public enum MarkdownCodec {
             let rendered = renderInline(block.content)
 
             if block.headingLevel > 0 {
-                rendered.addAttributes(
-                    [
-                        .font: AparteTypography.headingFont(level: block.headingLevel),
-                        .aparteHeadingLevel: block.headingLevel,
-                    ],
-                    range: NSRange(location: 0, length: rendered.length)
-                )
+                let range = NSRange(location: 0, length: rendered.length)
+                rendered.enumerateAttribute(.font, in: range) { value, run, _ in
+                    let traits = NSFontManager.shared.traits(of: value as? NSFont ?? AparteTypography.bodyFont)
+                    let font = NSFontManager.shared.convert(AparteTypography.headingFont(level: block.headingLevel), toHaveTrait: traits)
+                    rendered.addAttributes([.font: font, .aparteHeadingLevel: block.headingLevel,
+                                            .aparteInlineBold: traits.contains(.boldFontMask)], range: run)
+                }
             }
 
             if let listKind = block.listKind {
@@ -101,67 +102,94 @@ public enum MarkdownCodec {
     }
 
     private static func renderInline(_ source: String) -> NSMutableAttributedString {
-        let output = NSMutableAttributedString()
-        var cursor = source.startIndex
-
-        while cursor < source.endIndex {
-            let remainder = source[cursor...]
-            guard let token = nextToken(in: remainder) else {
-                output.append(NSAttributedString(string: String(remainder), attributes: AparteTypography.baseAttributes))
-                break
-            }
-
-            if cursor < token.range.lowerBound {
-                output.append(NSAttributedString(
-                    string: String(source[cursor..<token.range.lowerBound]),
-                    attributes: AparteTypography.baseAttributes
-                ))
-            }
-
-            var attributes = AparteTypography.baseAttributes
-            token.attributes.forEach { attributes[$0.key] = $0.value }
-            output.append(NSAttributedString(string: token.visible, attributes: attributes))
-            cursor = token.range.upperBound
-        }
-        return output
-    }
-
-    private static func nextToken(in source: Substring) -> InlineToken? {
+        // Pair delimiters once, then emit runs once. Unpaired delimiters remain
+        // literal, without rescanning the rest of a long malformed paragraph.
+        let units = Array(source.utf16)
+        let string = source as NSString
         var tokens: [InlineToken] = []
-        let string = String(source)
+        var openers = [[Int]](repeating: [], count: 5)
+        var parentheses: [Int: Int] = [:]
+        var openings: [Int] = []
+        for index in units.indices {
+            if units[index] == 40 { openings.append(index) }
+            if units[index] == 41, let start = openings.popLast() { parentheses[start] = index }
+        }
+        func add(_ start: Int, _ length: Int, _ kind: Int, closing: Bool = false, link: URL? = nil) {
+            let index = tokens.count
+            tokens.append(InlineToken(range: NSRange(location: start, length: length), kind: kind))
+            if closing, let opener = openers[kind].popLast(), NSMaxRange(tokens[opener].range) < start {
+                tokens[opener].partner = index
+                tokens[opener].link = link
+                tokens[index].partner = opener
+            } else if !closing { openers[kind].append(index) }
+        }
+        var cursor = 0
+        while cursor < units.count {
+            if units[cursor] == 92, cursor + 1 < units.count, [92, 42, 91, 93, 60, 62].contains(units[cursor + 1]) {
+                tokens.append(InlineToken(range: NSRange(location: cursor, length: 2), kind: 0))
+                cursor += 2
+            } else if units[cursor] == 42 {
+                var end = cursor
+                while end < units.count, units[end] == 42 { end += 1 }
+                while cursor < end {
+                    let remaining = end - cursor
+                    let closesBold = !openers[1].isEmpty && remaining >= 2
+                    let closesItalic = !openers[2].isEmpty && remaining % 2 == 1
+                    let closing = closesBold || closesItalic
+                    let length = closing ? (closesBold ? 2 : 1) : (remaining >= 2 ? 2 : 1)
+                    add(cursor, length, length == 2 ? 1 : 2, closing: closing)
+                    cursor += length
+                }
+            } else if cursor + 3 <= units.count, units[cursor..<cursor + 3].elementsEqual([60, 117, 62]) {
+                add(cursor, 3, 3)
+                cursor += 3
+            } else if cursor + 4 <= units.count, units[cursor..<cursor + 4].elementsEqual([60, 47, 117, 62]) {
+                add(cursor, 4, 3, closing: true)
+                cursor += 4
+            } else if units[cursor] == 91 {
+                add(cursor, 1, 4)
+                cursor += 1
+            } else if units[cursor] == 93, cursor + 1 < units.count, units[cursor + 1] == 40,
+                      let end = parentheses[cursor + 1], !openers[4].isEmpty {
+                let destination = string.substring(with: NSRange(location: cursor + 2, length: end - cursor - 2))
+                add(cursor, end - cursor + 1, 4, closing: true, link: LinkURLNormalizer.normalize(destination))
+                cursor = end + 1
+            } else { cursor += 1 }
+        }
 
-        if let match = string.firstMatch(of: /\*\*([^\n]+?)\*\*/) {
-            let range = match.range
-            let font = NSFontManager.shared.convert(AparteTypography.bodyFont, toHaveTrait: .boldFontMask)
-            tokens.append(InlineToken(range: range, visible: String(match.1), attributes: [.font: font]))
+        let output = NSMutableAttributedString()
+        var active = [Int](repeating: 0, count: 5)
+        var links: [URL?] = []
+        func append(_ text: String) {
+            guard !text.isEmpty else { return }
+            var attributes = AparteTypography.baseAttributes
+            var traits: NSFontTraitMask = []
+            if active[1] > 0 { traits.insert(.boldFontMask) }
+            if active[2] > 0 { traits.insert(.italicFontMask) }
+            attributes[.font] = NSFontManager.shared.convert(AparteTypography.bodyFont, toHaveTrait: traits)
+            if active[3] > 0 { attributes[.underlineStyle] = NSUnderlineStyle.single.rawValue }
+            if let link = links.last ?? nil {
+                attributes[.link] = link
+                attributes[.foregroundColor] = NSColor.linkColor
+                attributes[.underlineStyle] = NSUnderlineStyle.single.rawValue
+            }
+            output.append(NSAttributedString(string: text, attributes: attributes))
         }
-        if let match = string.firstMatch(of: /\*([^*\n]+?)\*/) {
-            let range = match.range
-            let font = NSFontManager.shared.convert(AparteTypography.bodyFont, toHaveTrait: .italicFontMask)
-            tokens.append(InlineToken(range: range, visible: String(match.1), attributes: [.font: font]))
+        cursor = 0
+        for (index, token) in tokens.enumerated() {
+            append(string.substring(with: NSRange(location: cursor, length: token.range.location - cursor)))
+            if token.kind == 0 { append(string.substring(with: NSRange(location: token.range.location + 1, length: 1))) }
+            else if let partner = token.partner {
+                let opening = partner > index
+                active[token.kind] += opening ? 1 : -1
+                if token.kind == 4 {
+                    if opening { links.append(token.link) } else { links.removeLast() }
+                }
+            } else { append(string.substring(with: token.range)) }
+            cursor = NSMaxRange(token.range)
         }
-        if let match = string.firstMatch(of: /<u>([^\n]+?)<\/u>/) {
-            tokens.append(InlineToken(
-                range: match.range,
-                visible: String(match.1),
-                attributes: [.underlineStyle: NSUnderlineStyle.single.rawValue]
-            ))
-        }
-        if let match = string.firstMatch(of: /\[([^\]\n]+)\]\(([^)\n]+)\)/),
-           let url = URL(string: String(match.2)) {
-            tokens.append(InlineToken(
-                range: match.range,
-                visible: String(match.1),
-                attributes: [.link: url, .foregroundColor: NSColor.linkColor, .underlineStyle: NSUnderlineStyle.single.rawValue]
-            ))
-        }
-
-        guard let first = tokens.min(by: { $0.range.lowerBound < $1.range.lowerBound }) else { return nil }
-        let lowerOffset = string.distance(from: string.startIndex, to: first.range.lowerBound)
-        let upperOffset = string.distance(from: string.startIndex, to: first.range.upperBound)
-        let lower = source.index(source.startIndex, offsetBy: lowerOffset)
-        let upper = source.index(source.startIndex, offsetBy: upperOffset)
-        return InlineToken(range: lower..<upper, visible: first.visible, attributes: first.attributes)
+        append(string.substring(from: cursor))
+        return output
     }
 
     private static func serializeInline(
@@ -171,27 +199,56 @@ public enum MarkdownCodec {
     ) -> String {
         guard range.length > 0 else { return "" }
         var result = ""
+        var open: [(start: String, end: String)] = []
+        // Plain typed Markdown keeps its existing interpretation. Once a
+        // paragraph contains generated formatting, escape its text so literal
+        // delimiters cannot open, close, or retarget that formatting.
+        var protectMarkup = ignoreBold
+        attributedString.enumerateAttributes(in: range) { attributes, _, _ in
+            let link = ((attributes[.link] as? URL)?.absoluteString ?? attributes[.link] as? String).flatMap(LinkURLNormalizer.normalize)
+            if !AparteTypography.inlineTraits(in: attributes).isEmpty
+                || (attributes[.underlineStyle] as? Int ?? 0) != 0 || link != nil {
+                protectMarkup = true
+            }
+        }
         attributedString.enumerateAttributes(in: range) { attributes, runRange, _ in
             let text = (attributedString.string as NSString).substring(with: runRange)
             let font = attributes[.font] as? NSFont ?? AparteTypography.bodyFont
             let traits = NSFontManager.shared.traits(of: font)
-            let isBold = !ignoreBold && traits.contains(.boldFontMask)
+            let isBold = (!ignoreBold || attributes[.aparteInlineBold] as? Bool == true) && traits.contains(.boldFontMask)
             let isItalic = traits.contains(.italicFontMask)
             let isUnderlined = (attributes[.underlineStyle] as? Int ?? 0) != 0
-            let link = (attributes[.link] as? URL) ?? (attributes[.link] as? String).flatMap(URL.init(string:))
+            let link = ((attributes[.link] as? URL)?.absoluteString ?? attributes[.link] as? String).flatMap(LinkURLNormalizer.normalize)
 
-            var segment = escapePlainText(text)
-            if isBold { segment = "**\(segment)**" }
-            if isItalic { segment = "*\(segment)*" }
-            if isUnderlined && link == nil { segment = "<u>\(segment)</u>" }
-            if let link { segment = "[\(segment)](\(link.absoluteString))" }
-            result += segment
+            var desired: [(start: String, end: String)] = []
+            if let link {
+                let destination = link.absoluteString.replacingOccurrences(of: "(", with: "%28").replacingOccurrences(of: ")", with: "%29")
+                desired.append(("[", "](\(destination))"))
+            }
+            if isUnderlined && link == nil { desired.append(("<u>", "</u>")) }
+            if isItalic { desired.append(("*", "*")) }
+            if isBold { desired.append(("**", "**")) }
+            var common = 0
+            while common < min(open.count, desired.count),
+                  open[common].start == desired[common].start, open[common].end == desired[common].end {
+                common += 1
+            }
+            for delimiter in open[common...].reversed() { result += delimiter.end }
+            for delimiter in desired[common...] { result += delimiter.start }
+            result += escapePlainText(text, protectMarkup: protectMarkup)
+            open = desired
         }
+        for delimiter in open.reversed() { result += delimiter.end }
         return result
     }
 
-    private static func escapePlainText(_ text: String) -> String {
-        text.replacingOccurrences(of: "\\", with: "\\\\")
+    private static func escapePlainText(_ text: String, protectMarkup: Bool) -> String {
+        var result = ""
+        for character in text {
+            if character == "\\" || protectMarkup && "*[]<>".contains(character) { result.append("\\") }
+            result.append(character)
+        }
+        return result
     }
 
 }

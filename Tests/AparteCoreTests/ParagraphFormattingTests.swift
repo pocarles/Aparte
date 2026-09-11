@@ -37,7 +37,7 @@ final class ParagraphFormattingTests: XCTestCase {
                             range: NSRange(location: 0, length: source.length))
         let html = ParagraphFormatting.html(from: source)
         XCTAssertTrue(html.contains("&lt;draft&gt; &amp; &quot;quotes&quot; &#39;text&#39;"))
-        XCTAssertTrue(html.contains("href=\"https://example.com/?q=&quot;a&quot;&amp;next=&lt;b&gt;\""))
+        XCTAssertTrue(html.contains("href=\"https://example.com/?q=%22a%22&amp;next=%3Cb%3E\""))
         XCTAssertFalse(html.contains("<draft>"))
     }
 
@@ -51,5 +51,48 @@ final class ParagraphFormattingTests: XCTestCase {
         let source = NSAttributedString(string: "\n\n")
         XCTAssertEqual(ParagraphFormatting.plainText(from: source), "")
         XCTAssertFalse(ParagraphFormatting.html(from: source).contains("<p>"))
+    }
+
+    func testAttributeOnlyOrderedItemsShareResolvedNumbers() {
+        let text = NSAttributedString(string: "7. One\nTwo\nThree", attributes: [.aparteListKind: AparteListKind.ordered.rawValue])
+        XCTAssertEqual(ParagraphFormatting.plainText(from: text), "7. One\n8. Two\n9. Three")
+        XCTAssertEqual(MarkdownCodec.markdown(from: text), "7. One\n8. Two\n9. Three")
+        XCTAssertTrue(ParagraphFormatting.html(from: text).contains("<ol start=\"7\"><li value=\"7\">One</li><li value=\"8\">Two</li><li value=\"9\">Three</li></ol>"))
+    }
+
+    func testCopyFragmentsLoseBlockMeaningButWholeParagraphsKeepIt() {
+        for markdown in ["- world", "7. world", "# world"] {
+            let text = MarkdownCodec.render(markdown)
+            let word = (text.string as NSString).range(of: "wor")
+            let fragment = ParagraphFormatting.copyText(from: text, range: word)
+            XCTAssertEqual(ParagraphFormatting.plainText(from: fragment), "wor")
+            XCTAssertFalse(MarkdownCodec.markdown(from: fragment).hasPrefix("# "))
+            XCTAssertFalse(MarkdownCodec.markdown(from: fragment).hasPrefix("- "))
+            let html = ParagraphFormatting.html(from: fragment)
+            XCTAssertFalse(html.contains("<li") || html.contains("<h1>"))
+            if markdown.hasPrefix("#") {
+                XCTAssertEqual(MarkdownCodec.markdown(from: fragment), "wor")
+                XCTAssertFalse(html.contains("<strong>"))
+            }
+            let whole = ParagraphFormatting.copyText(from: text, range: NSRange(location: 0, length: text.length))
+            XCTAssertEqual(MarkdownCodec.markdown(from: whole), markdown)
+        }
+        let text = MarkdownCodec.render("- world")
+        let prefix = ParagraphFormatting.copyText(from: text, range: NSRange(location: 0, length: 5))
+        XCTAssertEqual(ParagraphFormatting.plainText(from: prefix), "• wor")
+        XCTAssertFalse(ParagraphFormatting.html(from: prefix).contains("<li>"))
+    }
+
+    func testPartialHeadingsRetainOnlyExplicitInlineTraits() {
+        for (markdown, expected) in [("# *world*", "*wor*"), ("# **world**", "**wor**"), ("# ***world***", "***wor***")] {
+            let heading = MarkdownCodec.render(markdown)
+            let fragment = ParagraphFormatting.copyText(from: heading, range: NSRange(location: 0, length: 3))
+            XCTAssertEqual(MarkdownCodec.markdown(from: fragment), expected)
+            XCTAssertEqual(MarkdownCodec.markdown(from: heading), markdown)
+        }
+        let ambiguous = NSAttributedString(string: "world", attributes: [.font: AparteTypography.headingFont(level: 1), .aparteHeadingLevel: 1])
+        let fragment = ParagraphFormatting.copyText(from: ambiguous, range: NSRange(location: 0, length: 3))
+        XCTAssertEqual(MarkdownCodec.markdown(from: fragment), "wor")
+        XCTAssertFalse(ParagraphFormatting.html(from: fragment).contains("<strong>"))
     }
 }

@@ -58,7 +58,7 @@ final class EditorTextView: NSTextView {
         let range = selectedRange()
         guard let textStorage, range.length > 0,
               NSMaxRange(range) <= textStorage.length else { return }
-        writeToPasteboard(textStorage.attributedSubstring(from: range), pasteboard: pasteboard)
+        writeToPasteboard(ParagraphFormatting.copyText(from: textStorage, range: range), pasteboard: pasteboard)
     }
 
     override func paste(_ sender: Any?) {
@@ -81,16 +81,14 @@ final class EditorTextView: NSTextView {
             : NSRange(location: 0, length: textStorage.length)
         guard NSMaxRange(range) <= textStorage.length else { return }
 
-        let plainText = ParagraphFormatting.plainText(from: textStorage.attributedSubstring(from: range))
+        let plainText = ParagraphFormatting.plainText(from: ParagraphFormatting.copyText(from: textStorage, range: range))
         pasteboard.clearContents()
         pasteboard.setString(plainText, forType: .string)
     }
 
     func copyAllPreservingSelection(to pasteboard: NSPasteboard = .general) {
         guard let textStorage, textStorage.length > 0 else { return }
-        let attributed = textStorage.attributedSubstring(
-            from: NSRange(location: 0, length: textStorage.length)
-        )
+        let attributed = ParagraphFormatting.copyText(from: textStorage, range: NSRange(location: 0, length: textStorage.length))
         writeToPasteboard(attributed, pasteboard: pasteboard)
     }
 
@@ -103,13 +101,19 @@ final class EditorTextView: NSTextView {
     }
 
     @objc func copyAsMarkdown(_ sender: Any?) {
+        copyMarkdown(to: .general)
+    }
+
+    func copyMarkdown(to pasteboard: NSPasteboard) {
+        guard let textStorage, textStorage.length > 0 else { return }
         let range = selectedRange().length > 0
             ? selectedRange()
-            : NSRange(location: 0, length: textStorage?.length ?? 0)
-        guard let attributed = textStorage?.attributedSubstring(from: range) else { return }
+            : NSRange(location: 0, length: textStorage.length)
+        guard NSMaxRange(range) <= textStorage.length else { return }
+        let attributed = ParagraphFormatting.copyText(from: textStorage, range: range)
         let markdown = MarkdownCodec.markdown(from: attributed)
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(markdown, forType: .string)
+        pasteboard.clearContents()
+        pasteboard.setString(markdown, forType: .string)
     }
 
     @objc func clearAll(_ sender: Any?) {
@@ -143,17 +147,55 @@ final class EditorTextView: NSTextView {
     }
 
     func applyHeading(level: Int) {
-        guard let textStorage else { return }
-        let paragraphs = (string as NSString).paragraphRange(for: selectedRange())
-        textStorage.addAttributes(
-            [.font: AparteTypography.headingFont(level: level), .aparteHeadingLevel: level],
-            range: paragraphs
-        )
+        guard let textStorage, textStorage.length > 0 else { return }
+        textStorage.beginEditing()
+        for line in selectedLineRanges().reversed() {
+            let marker = ListContinuation.marker(in: (string as NSString).substring(with: line))
+            let removed = marker?.utf16Length ?? 0
+            if removed > 0 { textStorage.deleteCharacters(in: NSRange(location: line.location, length: removed)) }
+            let range = NSRange(location: line.location, length: line.length - removed)
+            textStorage.removeAttribute(.aparteListKind, range: range)
+            textStorage.removeAttribute(.aparteInlineOnly, range: range)
+            textStorage.enumerateAttributes(in: range) { attributes, run, _ in
+                let traits = AparteTypography.inlineTraits(in: attributes)
+                let font = NSFontManager.shared.convert(AparteTypography.headingFont(level: level), toHaveTrait: traits)
+                textStorage.addAttributes([.font: font, .aparteHeadingLevel: level,
+                                           .aparteInlineBold: traits.contains(.boldFontMask),
+                                           .paragraphStyle: AparteTypography.bodyParagraphStyle], range: run)
+            }
+        }
+        textStorage.endEditing()
         didChangeText()
     }
 
     func applyList(_ kind: AparteListKind) {
-        guard let textStorage else { return }
+        guard let textStorage, textStorage.length > 0 else { return }
+        let lines = selectedLineRanges()
+        textStorage.beginEditing()
+        for (offset, line) in lines.enumerated().reversed() {
+            let existing = ListContinuation.marker(in: (string as NSString).substring(with: line))
+            let marker = existing?.kind == kind ? existing!.prefix : kind == .unordered ? "• " : "\(offset + 1). "
+            let removed = existing?.utf16Length ?? 0
+            textStorage.replaceCharacters(in: NSRange(location: line.location, length: removed),
+                                          with: NSAttributedString(string: marker, attributes: AparteTypography.baseAttributes))
+            let range = NSRange(location: line.location, length: line.length - removed + marker.utf16.count)
+            textStorage.enumerateAttributes(in: range) { attributes, run, _ in
+                if attributes[.aparteHeadingLevel] != nil {
+                    let font = NSFontManager.shared.convert(AparteTypography.bodyFont,
+                                                           toHaveTrait: AparteTypography.inlineTraits(in: attributes))
+                    textStorage.addAttribute(.font, value: font, range: run)
+                }
+            }
+            textStorage.removeAttribute(.aparteHeadingLevel, range: range)
+            textStorage.removeAttribute(.aparteInlineBold, range: range)
+            textStorage.removeAttribute(.aparteInlineOnly, range: range)
+            textStorage.addAttributes([.aparteListKind: kind.rawValue, .paragraphStyle: AparteTypography.listParagraphStyle], range: range)
+        }
+        textStorage.endEditing()
+        didChangeText()
+    }
+
+    private func selectedLineRanges() -> [NSRange] {
         let paragraphRange = (string as NSString).paragraphRange(for: selectedRange())
         let source = string as NSString
         var lineRanges: [NSRange] = []
@@ -162,16 +204,7 @@ final class EditorTextView: NSTextView {
         }
         if lineRanges.isEmpty { lineRanges = [paragraphRange] }
 
-        textStorage.beginEditing()
-        for (offset, lineRange) in lineRanges.enumerated().reversed() {
-            let marker = kind == .unordered ? "• " : "\(offset + 1). "
-            textStorage.insert(NSAttributedString(string: marker, attributes: AparteTypography.baseAttributes), at: lineRange.location)
-            let resultingRange = NSRange(location: lineRange.location, length: lineRange.length + marker.utf16.count)
-            textStorage.addAttribute(.aparteListKind, value: kind.rawValue, range: resultingRange)
-            textStorage.addAttribute(.paragraphStyle, value: AparteTypography.listParagraphStyle, range: resultingRange)
-        }
-        textStorage.endEditing()
-        didChangeText()
+        return lineRanges
     }
 
     func applyLink(_ url: URL, to range: NSRange? = nil) {

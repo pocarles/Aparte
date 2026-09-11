@@ -17,6 +17,12 @@ fi
 test -d "$app_dir"
 test -f "$app_dir/Contents/Resources/Aparte.icns"
 test -f "$app_dir/Contents/Resources/PrivacyInfo.xcprivacy"
+privacy_manifest="$app_dir/Contents/Resources/PrivacyInfo.xcprivacy"
+defaults_reason_count="$(plutil -convert xml1 -o - "$privacy_manifest" | /usr/bin/xmllint --xpath 'count(/plist/dict/key[.="NSPrivacyAccessedAPITypes"]/following-sibling::array[1]/dict[key[.="NSPrivacyAccessedAPIType"]/following-sibling::string[1]="NSPrivacyAccessedAPICategoryUserDefaults"]/key[.="NSPrivacyAccessedAPITypeReasons"]/following-sibling::array[1]/string[.="CA92.1"])' -)"
+if [[ "$defaults_reason_count" != "1" ]]; then
+    echo "The privacy manifest must declare UserDefaults with reason CA92.1." >&2
+    exit 1
+fi
 
 [[ "$(plutil -extract CFBundleIdentifier raw -o - "$info")" == "com.pocarles.aparte" ]]
 [[ "$(plutil -extract LSApplicationCategoryType raw -o - "$info")" == "public.app-category.productivity" ]]

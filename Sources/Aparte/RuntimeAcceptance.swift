@@ -296,6 +296,74 @@ enum RuntimeAcceptance {
             editor.copyPlainText(to: clipboard)
             check(clipboard.string(forType: .string) == editor.string && editor.selectedRange().location == 3, "copy-plain-whole-pad-preserves-cursor")
 
+            for markdown in ["- world", "7. world", "# world"] {
+                pad.setMarkdownForRuntimeCheck(markdown)
+                editor.setSelectedRange((editor.string as NSString).range(of: "wor"))
+                editor.copySelection(to: clipboard)
+                check(clipboard.string(forType: .string) == "wor"
+                      && clipboard.string(forType: .html)?.contains("<li") == false
+                      && clipboard.string(forType: .html)?.contains("<h1>") == false,
+                      "partial-block-formatted-copy-\(markdown.prefix(1))")
+                editor.copyPlainText(to: clipboard)
+                check(clipboard.string(forType: .string) == "wor", "partial-block-plain-copy-\(markdown.prefix(1))")
+                editor.copyMarkdown(to: clipboard)
+                let copied = clipboard.string(forType: .string) ?? ""
+                check(!copied.hasPrefix("- ") && !copied.hasPrefix("7. ") && !copied.hasPrefix("# ")
+                      && MarkdownCodec.render(copied).string == "wor", "partial-block-markdown-copy-\(markdown.prefix(1))")
+                if markdown.hasPrefix("#") {
+                    check(copied == "wor", "partial-heading-markdown-has-no-structural-bold")
+                    editor.copySelection(to: clipboard)
+                    check(clipboard.string(forType: .html)?.contains("<strong>") == false,
+                          "partial-heading-html-has-no-structural-bold")
+                }
+                editor.setSelectedRange(NSRange(location: 0, length: editor.string.utf16.count))
+                editor.copyMarkdown(to: clipboard)
+                check(clipboard.string(forType: .string) == markdown, "whole-block-markdown-copy-\(markdown.prefix(1))")
+            }
+            pad.setMarkdownForRuntimeCheck("")
+            let clipboardBeforeEmptyMarkdown = clipboard.changeCount
+            editor.copyMarkdown(to: clipboard)
+            check(clipboard.changeCount == clipboardBeforeEmptyMarkdown, "empty-markdown-copy-preserves-pasteboard")
+
+            for marker in ["- ", "* ", "+ ", "• ", "12. "] {
+                editor.replaceAll(with: NSAttributedString(string: marker + "Item", attributes: AparteTypography.baseAttributes))
+                editor.setSelectedRange(NSRange(location: 0, length: editor.string.utf16.count))
+                let kind: AparteListKind = marker == "12. " ? .ordered : .unordered
+                editor.applyList(kind)
+                editor.setSelectedRange(NSRange(location: 0, length: editor.string.utf16.count))
+                editor.applyList(kind)
+                check(editor.string == marker + "Item", "list-action-idempotent-\(marker)")
+                editor.setSelectedRange(NSRange(location: 0, length: editor.string.utf16.count))
+                editor.applyHeading(level: 1)
+                check(editor.string == "Item" && document.markdown == "# Item", "heading-replaces-list-\(marker)")
+                editor.setSelectedRange(NSRange(location: 0, length: editor.string.utf16.count))
+                editor.applyList(.unordered)
+                check(editor.string == "• Item" && document.markdown == "- Item"
+                      && editor.attributedString().attribute(.aparteHeadingLevel, at: 0, effectiveRange: nil) == nil,
+                      "list-replaces-heading-\(marker)")
+            }
+            pad.setMarkdownForRuntimeCheck("- One\n- Two\n- Three")
+            editor.setSelectedRange(NSRange(location: 0, length: editor.string.utf16.count))
+            editor.applyList(.ordered)
+            check(editor.string == "1. One\n2. Two\n3. Three", "list-conversion-numbers-all-selected-paragraphs")
+            editor.setSelectedRange(NSRange(location: 0, length: editor.string.utf16.count))
+            editor.applyList(.ordered)
+            check(editor.string == "1. One\n2. Two\n3. Three", "numbered-list-reapplication-is-idempotent")
+            pad.setMarkdownForRuntimeCheck("One\n")
+            editor.setSelectedRange(NSRange(location: editor.string.utf16.count, length: 0))
+            editor.applyList(.unordered)
+            check(editor.string == "One\n• ", "list-action-at-empty-final-paragraph")
+            pad.setMarkdownForRuntimeCheck("# *word*")
+            editor.setSelectedRange(NSRange(location: 0, length: editor.string.utf16.count))
+            editor.applyList(.unordered)
+            check(document.markdown == "- *word*", "heading-to-list-preserves-inline-italic")
+            editor.setSelectedRange(NSRange(location: 0, length: editor.string.utf16.count))
+            editor.applyHeading(level: 1)
+            check(document.markdown == "# *word*", "list-to-heading-preserves-inline-italic")
+            editor.setSelectedRange(NSRange(location: 0, length: 3))
+            editor.copyMarkdown(to: clipboard)
+            check(clipboard.string(forType: .string) == "*wor*", "partial-heading-copy-preserves-inline-italic")
+
             pad.setMarkdownForRuntimeCheck("First paragraph")
             editor.setSelectedRange(NSRange(location: editor.string.utf16.count, length: 0))
             editor.insertNewline(nil)
