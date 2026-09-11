@@ -25,7 +25,7 @@ Ordinary direct packaging requires `APARTE_SPARKLE_PUBLIC_ED_KEY` to contain a c
 
 Before tagging, increase both the marketing version and the positive integer `CFBundleVersion`. The workflow rejects a build number that does not exceed the latest published release. It signs and notarizes the DMG, then uses the pinned `generate_appcast` tool with the signing key in a mode-0600 temporary file. `scripts/generate-appcast.sh` checks the version, build, archive URL, release-note links, archive signature, and embedded feed signature. Never edit the XML after signing.
 
-The workflow uploads the DMG, checksum, and signed `appcast.xml` into one draft release before publishing it as latest. This keeps the stable feed and its archive available together. A manual workflow run prepares a signed rehearsal package without publication.
+For tag pushes, the workflow uploads the DMG, checksum, and signed `appcast.xml` into one draft release before publishing it as latest. This keeps the stable feed and its archive available together. A manual workflow run prepares the signed rehearsal package and appcast as workflow artifacts without publishing a GitHub Release.
 
 Version 1.2.1 and earlier releases have no updater. Existing users must install the first updater-enabled release manually. Before publishing it, complete the direct-update checks in [manual acceptance](manual-acceptance.md), including an actual signed upgrade from an older test build. Local packaging checks do not prove installation or notarization.
 

@@ -116,7 +116,6 @@ jobs:
           APARTE_SPARKLE_PUBLIC_ED_KEY: ${{ steps.updater.outputs.public_key }}
         run: ./scripts/package-direct.sh --mode release
       - name: Generate and verify signed appcast
-        if: github.event_name == 'push'
         env:
           APARTE_SPARKLE_PUBLIC_ED_KEY: ${{ steps.updater.outputs.public_key }}
           APP_VERSION: ${{ steps.metadata.outputs.version }}
