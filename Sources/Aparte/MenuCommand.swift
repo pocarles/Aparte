@@ -56,6 +56,14 @@ struct MenuCommand {
     static let quit = Self(title: "Quit Aparte", action: #selector(NSApplication.terminate(_:)), key: "q")
     static let about = Self(title: "About Aparte", action: #selector(AppDelegate.showAbout), key: "a", modifiers: [.command, .control])
 
+    static var updates: [Self] {
+        #if APARTE_DIRECT_UPDATES
+        [Self(title: "Check for Updates…", action: #selector(AppDelegate.checkForUpdates), key: "")]
+        #else
+        []
+        #endif
+    }
+
     static let undo = Self(title: "Undo", action: Selector(("undo:")), key: "z")
     static let redo = Self(title: "Redo", action: Selector(("redo:")), key: "z", modifiers: [.command, .shift])
     static let cut = Self(title: "Cut", action: #selector(NSText.cut(_:)), key: "x")

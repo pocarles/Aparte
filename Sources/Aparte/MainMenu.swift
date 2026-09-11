@@ -11,8 +11,8 @@ enum MainMenu {
             parent.submenu = submenu
             menu.addItem(parent)
         }
-        section("Aparte", [MenuCommand.about.item(target: target), .separator(),
-                            MenuCommand.hide.item(target: target), MenuCommand.quit.item()])
+        section("Aparte", [MenuCommand.about.item(target: target)] + MenuCommand.updates.map { $0.item(target: target) }
+                + [.separator(), MenuCommand.hide.item(target: target), MenuCommand.quit.item()])
         section("File", [MenuCommand.save.item(target: target), MenuCommand.clear.item(target: target), .separator(),
                           MenuCommand.restore.item(target: target), MenuCommand.discard.item(target: target)])
         section("Edit", MenuCommand.editing.map { $0.item() } + [.separator(), MenuCommand.copyAll.item(target: target),

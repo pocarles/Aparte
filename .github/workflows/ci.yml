@@ -16,3 +16,4 @@ jobs:
       - run: make package-app-store-local
       - run: ./scripts/validate-app-store.sh
       - run: make package-direct-dry-run
+      - run: bash scripts/test-updater.sh

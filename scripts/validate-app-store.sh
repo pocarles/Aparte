@@ -17,6 +17,7 @@ fi
 test -d "$app_dir"
 test -f "$app_dir/Contents/Resources/Aparte.icns"
 test -f "$app_dir/Contents/Resources/PrivacyInfo.xcprivacy"
+bash "$project_dir/scripts/validate-updater.sh" none "$app_dir"
 privacy_manifest="$app_dir/Contents/Resources/PrivacyInfo.xcprivacy"
 defaults_reason_count="$(plutil -convert xml1 -o - "$privacy_manifest" | /usr/bin/xmllint --xpath 'count(/plist/dict/key[.="NSPrivacyAccessedAPITypes"]/following-sibling::array[1]/dict[key[.="NSPrivacyAccessedAPIType"]/following-sibling::string[1]="NSPrivacyAccessedAPICategoryUserDefaults"]/key[.="NSPrivacyAccessedAPITypeReasons"]/following-sibling::array[1]/string[.="CA92.1"])' -)"
 if [[ "$defaults_reason_count" != "1" ]]; then

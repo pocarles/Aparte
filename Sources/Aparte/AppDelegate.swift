@@ -11,10 +11,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private var preferencesController: PreferencesController?
     private var escapeMonitor: Any?
     private let overlays = FocusOverlayController()
+    #if APARTE_DIRECT_UPDATES
+    var updateController: (any UpdateChecking)?
+    #endif
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         NSApp.mainMenu = MainMenu.make()
+        #if APARTE_DIRECT_UPDATES
+        updateController = UpdateController()
+        #endif
 
         do {
             let document = try DocumentController()
@@ -170,8 +176,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     @objc func discardRecovery() { padController?.discardRecovery() }
 
+    #if APARTE_DIRECT_UPDATES
+    @objc func checkForUpdates() {
+        guard updateController?.canCheckForUpdates == true else { return }
+        padController?.hide()
+        overlays.hide()
+        documentController?.saveNow()
+        updateController?.checkForUpdates()
+    }
+    #endif
+
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         switch menuItem.action {
+        #if APARTE_DIRECT_UPDATES
+        case #selector(checkForUpdates):
+            return updateController?.canCheckForUpdates == true
+        #endif
         case #selector(toggleCounts):
             menuItem.state = padController?.showsCounts == true ? .on : .off
         case #selector(configureShortcut):

@@ -2,6 +2,14 @@
 
 All notable changes appear here. The project follows semantic versioning.
 
+## 1.3.0 - 2026-09-11
+
+- Direct-download builds check for updates daily through Sparkle and offer Check for Updates… in the main, status, and options menus. Updates do not install automatically by default.
+- Updates verify signed feeds and archive signatures before extraction. Release preparation rejects invalid or mismatched signing keys.
+- Local and App Store builds contain no Sparkle updater. Update requests send no writing or clipboard contents, and system profiling is disabled.
+- Includes the 1.2.1 fixes for Markdown reopening, clipboard output, and list formatting. Links remain limited to HTTP and HTTPS, and HTML paste cannot load external resources.
+- Existing users must install 1.3.0 manually to receive future updates through the app.
+
 ## 1.2.1 - 2026-09-11
 
 - Saved Markdown preserves combined formatting, literal delimiters within formatted text, and backslashes when reopened.

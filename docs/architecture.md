@@ -51,13 +51,17 @@ The autosave debounce uses a one-shot `DispatchWorkItem`. It is canceled and rep
 
 ## Privacy and dependencies
 
-Aparte has no external package dependency, web view, network request, updater, account, cloud sync, analytics, or telemetry. It links only Apple system frameworks through AppKit, Foundation, Uniform Type Identifiers, and Carbon.
+Local and App Store builds link only Apple system frameworks and contain no updater. Direct-download builds additionally link Sparkle 2.9.6, pinned in `Package.resolved`, behind `APARTE_DIRECT_UPDATES`. SwiftPM resolves the package for every build but adds it to the executable only when `APARTE_ENABLE_UPDATES=1`; the packaging script selects the build mode.
+
+The direct updater uses Sparkle's scheduler for daily HTTPS checks and its standard update window. Aparte adds no polling timer. The main menu, status menu, and options card share the same Check for Updates… command and validate it against `canCheckForUpdates`. The signed GitHub feed and archive are verified before extraction. System profiling and unattended installation default to off. No writing or clipboard contents enter update requests.
 
 The privacy manifest declares no tracking, collected data, or tracking domains. It declares UserDefaults with reason CA92.1 for preferences stored by Aparte. The HTML paste importer denies every subsidiary resource request, including remote images and stylesheets.
 
 ## Packaging
 
 Swift Package Manager builds the executable and `scripts/package-app.sh` assembles the app. The normal local package stays separate from the App Store candidate so sandbox testing does not silently replace the user's existing local document.
+
+Direct builds use a separate SwiftPM scratch directory. Packaging preserves Sparkle's framework symlinks, signs each nested executable before the framework and app, and injects the feed and public key only into the direct bundle. Validators check the configuration, signatures, linkage, and runtime search path. Non-direct validators require Sparkle and all `SU*` keys to be absent.
 
 The App Store candidate is universal for Apple silicon and Intel Macs. Its entitlements enable only App Sandbox and read-write access to files chosen through a system panel. `scripts/package-mas.sh` can sign the app and installer after the correct Apple Distribution certificate, Mac Installer Distribution certificate, and provisioning profile exist. It does not upload.
 

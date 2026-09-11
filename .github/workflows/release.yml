@@ -8,19 +8,19 @@ on:
       version:
         description: Version without v (dry-run)
         required: true
-        default: 1.2.1
+        default: 1.3.0
         type: string
       build_number:
         description: Positive bundle build number (dry-run)
         required: true
-        default: "8"
+        default: "9"
         type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: direct-release-${{ github.ref }}
+  group: direct-release
   cancel-in-progress: false
 
 jobs:
@@ -39,6 +39,7 @@ jobs:
           REF_NAME: ${{ github.ref_name }}
           INPUT_VERSION: ${{ inputs.version }}
           INPUT_BUILD: ${{ inputs.build_number }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           git fetch --no-tags origin main:refs/remotes/origin/main
@@ -50,6 +51,9 @@ jobs:
             [[ "$version" == "$bundle_version" ]] || { echo "Tag version does not match Info.plist" >&2; exit 64; }
             build_number=$(plutil -extract CFBundleVersion raw -o - Support/Info.plist)
             [[ "$build_number" =~ ^[1-9][0-9]*$ ]] || exit 64
+            previous_tag=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName)
+            previous_build=$(git show "$previous_tag:Support/Info.plist" | plutil -extract CFBundleVersion raw -o - -)
+            [[ "$previous_build" =~ ^[1-9][0-9]*$ && "$build_number" -gt "$previous_build" ]] || { echo "CFBundleVersion must increase beyond the latest published release" >&2; exit 64; }
           else
             [[ "$INPUT_VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || exit 64
             [[ "$INPUT_BUILD" =~ ^[1-9][0-9]*$ ]] || exit 64
@@ -58,6 +62,22 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "build_number=$build_number" >> "$GITHUB_OUTPUT"
       - run: make check
+      - run: bash scripts/test-updater.sh
+      - name: Prepare updater signing key
+        id: updater
+        env:
+          SPARKLE_ED25519_PRIVATE_KEY: ${{ secrets.SPARKLE_ED25519_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail; set +x; umask 077
+          [[ -n "$SPARKLE_ED25519_PRIVATE_KEY" ]] || { echo "Release packaging requires SPARKLE_ED25519_PRIVATE_KEY" >&2; exit 78; }
+          public_key=$(printf '%s' "$SPARKLE_ED25519_PRIVATE_KEY" | swift scripts/sparkle-public-key.swift)
+          project_dir="$GITHUB_WORKSPACE"
+          source scripts/sparkle-common.sh
+          validate_sparkle_public_key "$public_key"
+          printf '%s' "$SPARKLE_ED25519_PRIVATE_KEY" > "$RUNNER_TEMP/sparkle-ed25519.key"
+          chmod 600 "$RUNNER_TEMP/sparkle-ed25519.key"
+          unset SPARKLE_ED25519_PRIVATE_KEY
+          echo "public_key=$public_key" >> "$GITHUB_OUTPUT"
       - name: Import temporary signing credentials
         id: credentials
         env:
@@ -93,7 +113,19 @@ jobs:
           APARTE_VERSION: ${{ steps.metadata.outputs.version }}
           APARTE_BUILD_NUMBER: ${{ steps.metadata.outputs.build_number }}
           APARTE_OUTPUT_DIR: ${{ runner.temp }}/aparte-release
+          APARTE_SPARKLE_PUBLIC_ED_KEY: ${{ steps.updater.outputs.public_key }}
         run: ./scripts/package-direct.sh --mode release
+      - name: Generate and verify signed appcast
+        if: github.event_name == 'push'
+        env:
+          APARTE_SPARKLE_PUBLIC_ED_KEY: ${{ steps.updater.outputs.public_key }}
+          APP_VERSION: ${{ steps.metadata.outputs.version }}
+          APP_BUILD: ${{ steps.metadata.outputs.build_number }}
+        run: |
+          set -euo pipefail; set +x; umask 077
+          key_file="$RUNNER_TEMP/sparkle-ed25519.key"
+          trap 'rm -f "$key_file"' EXIT
+          APARTE_SPARKLE_PRIVATE_KEY_FILE="$key_file" bash scripts/generate-appcast.sh "$RUNNER_TEMP/aparte-release" "$APP_VERSION" "$APP_BUILD"
       - name: Remove temporary credentials
         if: always()
         env:
@@ -101,13 +133,14 @@ jobs:
         run: |
           set +e
           security delete-keychain "$RUNNER_TEMP/aparte-signing.keychain-db" 2>/dev/null
-          rm -f "$RUNNER_TEMP/AuthKey_${API_KEY_ID}.p8" "$RUNNER_TEMP/developer-id.p12"
+          rm -f "$RUNNER_TEMP/AuthKey_${API_KEY_ID}.p8" "$RUNNER_TEMP/developer-id.p12" "$RUNNER_TEMP/sparkle-ed25519.key"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: Aparte-${{ steps.metadata.outputs.version }}
           path: |
             ${{ runner.temp }}/aparte-release/Aparte.dmg
             ${{ runner.temp }}/aparte-release/Aparte.dmg.sha256
+            ${{ runner.temp }}/aparte-release/appcast.xml
           if-no-files-found: error
 
   publish:
@@ -126,5 +159,6 @@ jobs:
         run: |
           set -euo pipefail; cd release-assets
           sha256sum -c Aparte.dmg.sha256
-          gh release create "$TAG" Aparte.dmg Aparte.dmg.sha256 --repo "$GITHUB_REPOSITORY" --verify-tag --title "Aparte ${TAG#v}" --generate-notes --draft
-          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false
+          test -s appcast.xml
+          gh release create "$TAG" Aparte.dmg Aparte.dmg.sha256 appcast.xml --repo "$GITHUB_REPOSITORY" --verify-tag --title "Aparte ${TAG#v}" --generate-notes --draft
+          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false --latest

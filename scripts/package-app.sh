@@ -5,6 +5,8 @@ project_dir="$(cd "$(dirname "$0")/.." && pwd)"
 configuration="${CONFIGURATION:-release}"
 distribution="${DISTRIBUTION:-local}"
 universal="${UNIVERSAL:-0}"
+source "$project_dir/scripts/sparkle-common.sh"
+export APARTE_ENABLE_UPDATES=0
 
 case "$distribution" in
     local)
@@ -14,6 +16,11 @@ case "$distribution" in
     direct)
         app_dir="$project_dir/dist/direct/Aparte.app"
         entitlements=""
+        validate_sparkle_public_key "${APARTE_SPARKLE_PUBLIC_ED_KEY:-}" || {
+            echo "Direct packaging requires APARTE_SPARKLE_PUBLIC_ED_KEY containing a base64 32-byte public key." >&2
+            exit 78
+        }
+        export APARTE_ENABLE_UPDATES=1
         ;;
     app-store-local|app-store)
         app_dir="$project_dir/dist/app-store/Aparte.app"
@@ -31,6 +38,10 @@ resources_dir="$contents_dir/Resources"
 
 build_args=(build --package-path "$project_dir" -c "$configuration" --product Aparte)
 path_args=(build --package-path "$project_dir" -c "$configuration" --show-bin-path)
+if [[ "$distribution" == direct ]]; then
+    build_args+=(--scratch-path "$sparkle_build_dir")
+    path_args+=(--scratch-path "$sparkle_build_dir")
+fi
 if [[ "$universal" == "1" ]]; then
     # Build each slice with SwiftPM, avoiding Swift Build's multi-architecture
     # compiler-probe deadlock on recent Xcode versions.
@@ -51,6 +62,8 @@ rm -rf "$app_dir"
 mkdir -p "$macos_dir" "$resources_dir"
 cp "$binary_path" "$macos_dir/Aparte"
 cp "$project_dir/Support/Info.plist" "$contents_dir/Info.plist"
+# The checked-in manifest never carries updater configuration.
+[[ "$(plutil -convert xml1 -o - "$contents_dir/Info.plist" | /usr/bin/xmllint --xpath 'count(/plist/dict/key[starts-with(.,"SU")])' -)" == 0 ]]
 if [[ -n "${APP_VERSION:-}" ]]; then
     plutil -replace CFBundleShortVersionString -string "$APP_VERSION" "$contents_dir/Info.plist"
 fi
@@ -72,10 +85,32 @@ fi
 
 signing_identity="${SIGNING_IDENTITY:--}"
 sign_args=(--force --sign "$signing_identity")
+if [[ "$distribution" == direct ]]; then
+    [[ "$(plutil -extract CFBundleShortVersionString raw -o - "$sparkle_framework/Resources/Info.plist")" == "$sparkle_version" ]]
+    mkdir -p "$contents_dir/Frameworks"
+    ditto "$sparkle_framework" "$contents_dir/Frameworks/Sparkle.framework"
+    cp "$sparkle_artifact/LICENSE" "$resources_dir/Sparkle-LICENSE.txt"
+    cp "$project_dir/THIRD_PARTY_NOTICES.md" "$resources_dir/THIRD_PARTY_NOTICES.md"
+    plutil -insert SUFeedURL -string "$sparkle_feed_url" "$contents_dir/Info.plist"
+    plutil -insert SUPublicEDKey -string "$APARTE_SPARKLE_PUBLIC_ED_KEY" "$contents_dir/Info.plist"
+    for key in SUEnableAutomaticChecks SUVerifyUpdateBeforeExtraction SURequireSignedFeed; do
+        plutil -insert "$key" -bool true "$contents_dir/Info.plist"
+    done
+    plutil -insert SUEnableSystemProfiling -bool false "$contents_dir/Info.plist"
+    plutil -insert SUAutomaticallyUpdate -bool false "$contents_dir/Info.plist"
+    plutil -insert SUScheduledCheckInterval -integer 86400 "$contents_dir/Info.plist"
+    sign_sparkle_framework "$contents_dir/Frameworks/Sparkle.framework" "$signing_identity"
+    if [[ "$signing_identity" != - ]]; then sign_args+=(--timestamp --options runtime); fi
+fi
 if [[ -n "$entitlements" ]]; then
     test -f "$entitlements"
     sign_args+=(--entitlements "$entitlements")
 fi
 codesign "${sign_args[@]}" "$app_dir"
+if [[ "$distribution" == direct ]]; then
+    bash "$project_dir/scripts/validate-updater.sh" direct "$app_dir"
+else
+    bash "$project_dir/scripts/validate-updater.sh" none "$app_dir"
+fi
 
 echo "$app_dir"

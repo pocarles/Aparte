@@ -17,9 +17,13 @@ check-app-store: test package-app-store-local
 	git diff --check
 
 check-direct: package-direct-dry-run
+	bash scripts/test-updater.sh
+	dist/direct/Aparte.app/Contents/MacOS/Aparte --runtime-acceptance
 
 package-direct-dry-run:
-	APARTE_OUTPUT_DIR="$${TMPDIR:-/tmp}/aparte-package-dry" APARTE_OVERWRITE=1 \
+	# RFC 8032 public test vector, only for this non-production packaging check.
+	APARTE_SPARKLE_PUBLIC_ED_KEY="11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=" \
+		APARTE_OUTPUT_DIR="$${TMPDIR:-/tmp}/aparte-package-dry" APARTE_OVERWRITE=1 \
 		./scripts/package-direct.sh --mode dry-run
 
 package:

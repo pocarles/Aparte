@@ -3,8 +3,8 @@ set -euo pipefail
 
 project_dir="$(cd "$(dirname "$0")/.." && pwd)"
 mode=dry-run
-version="${APARTE_VERSION:-1.2.1}"
-build_number="${APARTE_BUILD_NUMBER:-8}"
+version="${APARTE_VERSION:-1.3.0}"
+build_number="${APARTE_BUILD_NUMBER:-9}"
 output_dir="${APARTE_OUTPUT_DIR:-$project_dir/dist/direct-release}"
 configuration="${CONFIGURATION:-release}"
 identity="${APARTE_SIGN_IDENTITY:-}"
@@ -13,6 +13,7 @@ api_key_path="${APPLE_API_KEY_PATH:-}"
 api_key_id="${APPLE_API_KEY_ID:-}"
 api_issuer_id="${APPLE_API_ISSUER_ID:-}"
 overwrite="${APARTE_OVERWRITE:-0}"
+source "$project_dir/scripts/sparkle-common.sh"
 
 usage() {
     echo "Usage: scripts/package-direct.sh [--mode dry-run|release]"
@@ -31,12 +32,19 @@ done
     echo "APARTE_VERSION must use X.Y.Z." >&2; exit 64;
 }
 [[ "$build_number" =~ ^[1-9][0-9]*$ ]] || { echo "APARTE_BUILD_NUMBER must be positive." >&2; exit 64; }
+validate_sparkle_public_key "${APARTE_SPARKLE_PUBLIC_ED_KEY:-}" || {
+    echo "APARTE_SPARKLE_PUBLIC_ED_KEY must contain the base64 32-byte public update-signing key." >&2
+    exit 78
+}
 
 for command_name in swift plutil codesign ditto hdiutil lipo shasum xcrun; do
     command -v "$command_name" >/dev/null || { echo "Required command is unavailable: $command_name" >&2; exit 69; }
 done
 
 if [[ "$mode" == release ]]; then
+    [[ "$APARTE_SPARKLE_PUBLIC_ED_KEY" != '11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=' ]] || {
+        echo "The non-production check key cannot be used for a release." >&2; exit 78;
+    }
     [[ "$identity" == Developer\ ID\ Application:* ]] || {
         echo "Release mode requires APARTE_SIGN_IDENTITY to be a Developer ID Application identity." >&2; exit 78;
     }
@@ -73,6 +81,7 @@ DISTRIBUTION=direct UNIVERSAL=1 CONFIGURATION="$configuration" \
 ditto "$project_dir/dist/direct/Aparte.app" "$app_stage"
 
 if [[ "$mode" == release ]]; then
+    sign_sparkle_framework "$app_stage/Contents/Frameworks/Sparkle.framework" "$identity"
     codesign --force --timestamp --options runtime --sign "$identity" "$app_stage"
 else
     codesign --force --sign - "$app_stage"

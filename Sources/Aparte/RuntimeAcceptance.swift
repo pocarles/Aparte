@@ -506,11 +506,35 @@ enum RuntimeAcceptance {
                 }
             }
             let commandItems = leaves(MenuBarController.makeOptionsMenu(target: optionsTarget))
-            check(commandItems.allSatisfy { !MenuCommand.shortcutLabel(for: $0).isEmpty }, "every-menu-action-has-shortcut-hint")
+            check(commandItems.filter { item in !MenuCommand.updates.contains { $0.action == item.action } }
+                .allSatisfy { !MenuCommand.shortcutLabel(for: $0).isEmpty }, "every-writing-action-has-shortcut-hint")
             let localItems = commandItems.filter { !$0.keyEquivalent.isEmpty }
             let bindings = localItems.map { "\($0.keyEquivalentModifierMask.rawValue):\($0.keyEquivalent)" }
             check(Set(bindings).count == bindings.count, "writing-shortcuts-have-no-duplicates")
             let mainItems = leaves(MainMenu.make(target: optionsTarget))
+            #if APARTE_DIRECT_UPDATES
+            let updaterDelegate = AppDelegate()
+            let updaterProbe = AcceptanceUpdater()
+            updaterDelegate.updateController = updaterProbe
+            for menu in [MainMenu.make(target: updaterDelegate), MenuBarController.makeOptionsMenu(target: updaterDelegate),
+                         MenuBarController.makeOptionsMenu(target: updaterDelegate, forPad: false)] {
+                let updateItems = leaves(menu).filter { $0.action == #selector(AppDelegate.checkForUpdates) }
+                check(updateItems.count == 1 && updateItems[0].title == "Check for Updates…", "direct-menu-has-update-command")
+                if let item = updateItems.first {
+                    updaterProbe.canCheckForUpdates = false
+                    check(!updaterDelegate.validateMenuItem(item), "update-command-disabled-while-unavailable")
+                    updaterDelegate.checkForUpdates()
+                    check(updaterProbe.checks == 0, "disabled-update-command-does-not-check")
+                    updaterProbe.canCheckForUpdates = true
+                    check(updaterDelegate.validateMenuItem(item), "update-command-enabled-when-available")
+                }
+            }
+            updaterDelegate.checkForUpdates()
+            check(updaterProbe.checks == 1, "update-command-dispatches-once-without-network-in-acceptance")
+            #else
+            check(MenuCommand.updates.isEmpty && !mainItems.contains { $0.title == "Check for Updates…" }
+                  && !commandItems.contains { $0.title == "Check for Updates…" }, "non-direct-menus-omit-updater")
+            #endif
             check(localItems.allSatisfy { option in mainItems.contains { $0.action == option.action && $0.keyEquivalent == option.keyEquivalent && $0.keyEquivalentModifierMask == option.keyEquivalentModifierMask } },
                   "displayed-shortcuts-match-main-menu-bindings")
 
@@ -681,6 +705,15 @@ enum RuntimeAcceptance {
         RunLoop.current.run(until: Date().addingTimeInterval(seconds))
     }
 }
+
+#if APARTE_DIRECT_UPDATES
+@MainActor
+private final class AcceptanceUpdater: UpdateChecking {
+    var canCheckForUpdates = false
+    var checks = 0
+    func checkForUpdates() { checks += 1 }
+}
+#endif
 
 @MainActor
 private final class AcceptanceOptionsTarget: NSObject, NSMenuItemValidation {

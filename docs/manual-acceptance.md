@@ -87,7 +87,7 @@ On September 3, 2026, the locally prepared sandboxed candidate opened with a sep
 - [ ] Click the three-dot footer button; the options card stays inside the pad and matches its appearance. Check light and dark mode.
 - [ ] Choose an option, click outside the card, or press Escape; the card closes and the pad stays open. Outside clicks do not move the cursor or activate the control underneath.
 - [ ] Tab and arrow keys reach the options without moving focus behind the card; Return chooses the focused option. Unavailable recovery actions stay disabled.
-- [ ] Every action has a small shortcut hint. Expand Formatting, Editing, Recovery, and Aparte to check the grouped actions. All labels fit, and expanded content scrolls from top to bottom.
+- [ ] Every action with a keyboard binding has a small shortcut hint. Expand Formatting, Editing, Recovery, and Aparte to check the grouped actions. All labels fit, and expanded content scrolls from top to bottom.
 - [ ] Enabled options use a small filled dot with space before the label. Submenus use a smaller, separate chevron. Opening a submenu closes the previous one; clicking it again closes it.
 - [ ] While scrolling, the scrollbar stays to the right of the shortcut hints without covering them.
 - [ ] Command-/ opens and closes options. Command-Shift-W toggles counts with the card open or closed; formatting shortcuts work even when their group is collapsed.
@@ -102,6 +102,15 @@ On September 3, 2026, the locally prepared sandboxed candidate opened with a sep
 - [ ] Set a different global shortcut, invoke from another app, relaunch, and verify it persists; reset returns to Option-Space.
 - [ ] An unavailable shortcut reports failure and leaves the previous shortcut working. Escape cancels recording without changing the shortcut.
 - [ ] On an installed signed candidate, turn launch at login on and off and confirm System Settings matches; if macOS requires approval, Aparte says so.
+
+## Direct-download updates
+
+- [ ] On an installed direct candidate, Check for Updates… appears in the main Aparte menu, status menu, and three-dot options card. Its label fits without a keyboard hint.
+- [ ] Choosing it dismisses the writing pad and dimming overlays, shows Sparkle's window, and preserves the draft. It is disabled while Sparkle cannot start another check.
+- [ ] A current version reports no update. An offline check reports a recoverable error, and writing still works.
+- [ ] A signed older test build discovers the published signed candidate, displays its version and release notes, installs after approval, relaunches, and restores the same writing.
+- [ ] A tampered feed and archive are rejected in an isolated test feed. No production feed or user's installed app is changed for this test.
+- [ ] The App Store candidate and normal local package have no Check for Updates… command, Sparkle framework, or `SU*` keys.
 
 ## September 7 local writing-tools verification
 

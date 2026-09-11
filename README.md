@@ -11,8 +11,8 @@ local document is waiting when you come back.
 [Download the latest release](https://github.com/pocarles/Aparte/releases/latest/download/Aparte.dmg)
 or read the [product page](https://pocarles.com/aparte/).
 
-Version 1.2.1 fixes Markdown reopening, partial copy, and list formatting, and blocks HTML paste from loading external resources.
-Read the [release notes](https://github.com/pocarles/Aparte/releases/tag/v1.2.1).
+Version 1.3.0 adds daily checks for signed updates to direct-download builds, with Check for Updates… in the Aparte menus. Your writing stays on your Mac.
+Read the [release notes](https://github.com/pocarles/Aparte/releases/tag/v1.3.0).
 
 ## What it does
 
@@ -26,8 +26,10 @@ Read the [release notes](https://github.com/pocarles/Aparte/releases/tag/v1.2.1)
 - Autosaves one local document and restores it on relaunch.
 - Settles near zero CPU while hidden.
 
-Aparte has no account, cloud sync, analytics, advertising, updater, network
-connection, or third-party package dependency.
+Aparte has no account, cloud sync, analytics, or advertising. Writing stays on
+your Mac. Direct-download builds use Sparkle to check GitHub for signed updates
+once a day and offer Check for Updates… in the Aparte menus. Local and App Store
+builds contain no updater. See the [privacy policy](PRIVACY.md).
 
 ## Install
 
@@ -50,7 +52,7 @@ publishes it.
 
 ## Shortcuts
 
-Every command shows its shortcut in small text in the three-dot menu. Editing,
+Commands with keyboard shortcuts show them in small text in the three-dot menu. Editing,
 formatting, recovery, and app commands are grouped there; click a group to expand
 it. Only one group stays open at a time. A filled dot marks an option that is turned on.
 Shortcuts work while writing and while the options card is open.
