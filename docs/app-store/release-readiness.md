@@ -1,13 +1,13 @@
 # Mac App Store release readiness
 
-Status: prepared locally, not signed for the Store, uploaded, or submitted.
+Version 1.2.1, build 8, dated 2026-09-11, is prepared locally. It has not been signed for the Store, uploaded, or submitted.
 
 ## Ready in the repository
 
 - The bundle has a stable identifier, version, build number, productivity category, copyright, encryption declaration, and icon.
 - The App Store candidate enables App Sandbox and only user-selected read-write file access.
 - Save uses `NSSavePanel`. The app no longer needs direct Desktop access.
-- The privacy manifest declares no tracking, collected data, tracking domains, or required-reason API use.
+- The privacy manifest declares no tracking, collected data, or tracking domains. It declares UserDefaults with reason CA92.1 for Aparte's local preferences.
 - The App Store build is universal for Apple silicon and Intel Macs.
 - `make check-app-store` builds and runs a sandboxed, ad-hoc signed structural candidate, including a write through its real sandbox container, without touching App Store Connect. It is not upload proof.
 - `make package-mas` can create the signed installer after the correct Apple certificates and provisioning profile exist. It verifies the profile's bundle, team, expiration, platform, and authorized entitlements, then validates the embedded profile against the signed app. It does not upload.
@@ -41,8 +41,8 @@ After the correct team certificates and profile are available:
 APP_STORE_APP_IDENTITY="Apple Distribution: ..." \
 APP_STORE_INSTALLER_IDENTITY="Mac Installer Distribution: ..." \
 APP_STORE_PROVISIONING_PROFILE="/absolute/path/to/profile.provisionprofile" \
-APP_BUILD_NUMBER="1" \
+APP_BUILD_NUMBER="8" \
 make package-mas
 ```
 
-The second command creates `dist/Aparte-1.0.0.pkg`. Validate it against App Store Connect only after the app record exists. Upload only after an explicit release decision.
+The packaging command creates `dist/Aparte-1.2.1.pkg`. Validate it against App Store Connect only after the app record exists. Upload only after an explicit release decision.

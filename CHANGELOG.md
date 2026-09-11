@@ -2,6 +2,15 @@
 
 All notable changes appear here. The project follows semantic versioning.
 
+## 1.2.1 - 2026-09-11
+
+- Saved Markdown preserves combined formatting, literal delimiters within formatted text, and backslashes when reopened.
+- Copying part of a heading or list item keeps only the selected text and its inline formatting. Heading and list conversion preserves italic, and reapplying a list does not duplicate its marker.
+- Pasted lists use consistent visible markers and retain their starting numbers. Plain text, Markdown, and HTML copy agree on list numbering.
+- Links accept only HTTP and HTTPS destinations. HTML paste blocks subsidiary resource loads, including remote images and stylesheets.
+- Copy as Markdown leaves the clipboard unchanged when the pad is empty.
+- The privacy manifest declares UserDefaults access with reason CA92.1 for local preferences.
+
 ## 1.2.0 - 2026-09-11
 
 - Return starts a visibly separated paragraph. Pasted and reopened drafts use consistent spacing without extra empty rows.

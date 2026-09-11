@@ -11,8 +11,8 @@ local document is waiting when you come back.
 [Download the latest release](https://github.com/pocarles/Aparte/releases/latest/download/Aparte.dmg)
 or read the [product page](https://pocarles.com/aparte/).
 
-Version 1.2.0 adds paragraph spacing, ready-to-send copy, and feedback for Copy,
-Save, and Clear. Read the [release notes](https://github.com/pocarles/Aparte/releases/tag/v1.2.0).
+Version 1.2.1 fixes Markdown reopening, partial copy, and list formatting, and blocks HTML paste from loading external resources.
+Read the [release notes](https://github.com/pocarles/Aparte/releases/tag/v1.2.1).
 
 ## What it does
 
