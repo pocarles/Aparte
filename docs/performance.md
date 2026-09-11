@@ -1,5 +1,39 @@
 # Performance
 
+## September 11, 2026: version 1.3.0
+
+Measured the signed and notarized Universal 2 rehearsal of the shipping code,
+version 1.3.0, build 9, from commit `5823937` and workflow run `34634016759`.
+Public release was still pending at measurement time.
+
+The required release measurement used ordinary startup, which initialized
+`AppDelegate` and Sparkle's real scheduler. The exact copied executable ran with
+`CFFIXED_USER_HOME` and `HOME` set to `/private/tmp/aparte-v130-isolated-home`.
+The pre-existing Aparte process, PID 95101, was left untouched. Only the isolated
+measurement process, PID 43544, was terminated afterward.
+
+After 15 seconds of settling, all five samples showed 0.0% CPU. Resident memory
+was 100,720, 100,720, 100,784, 100,784, and 100,784 KiB. `vmmap` reported a
+30.3 MiB physical footprint and a 30.7 MiB peak. There were no persistent child
+processes or network sockets at measurement time. This scheduler-enabled run
+provides the required release idle measurement.
+
+For comparison, the editor-only command was
+`/private/tmp/aparte-v130-measure.XNfV1q/Aparte.app/Contents/MacOS/Aparte --runtime-acceptance --measure-idle-only`.
+All five idle samples showed 0.0% CPU. Resident memory was 91,792, 91,824,
+91,824, 91,824, and 91,808 KiB. `vmmap` reported a 21.5 MiB physical footprint
+and a 21.6 MiB peak. `lsof` showed no network sockets during measurement.
+This short-draft fixture bypasses normal app startup and does not initialize
+Sparkle's scheduler. It measures editor idle behavior, not an active update check.
+The ordinary-startup physical footprint was 8.8 MiB higher. That path includes
+Sparkle plus normal app delegate, menu, hotkey, and preferences startup. The
+difference measures their combined startup overhead and does not isolate Sparkle.
+
+The artifact passed checksum, Developer ID and hardened runtime, Universal 2,
+notarization, Gatekeeper, updater framework and configuration, and appcast and
+archive signature checks. DMG SHA-256:
+`1222d57ddfdd7668d7393c8084082e2e03d5607d756ce49bf3cc472d69e413f5`.
+
 ## V1 idle measurement
 
 Measured August 30, 2026 on a Mac17,9 with Apple M5 Pro, macOS 26.5.2 build 25F84. The tested build was the ad-hoc signed release app at source commit `bc985e2` from the canonical project path.
