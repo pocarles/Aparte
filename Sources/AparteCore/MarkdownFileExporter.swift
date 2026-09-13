@@ -1,25 +1,6 @@
 import Foundation
 
 public enum MarkdownFileExporter {
-    public static func export(
-        _ markdown: String,
-        to directory: URL,
-        fileManager: FileManager = .default
-    ) throws -> URL {
-        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
-        let baseName = suggestedBaseName(for: markdown)
-        var destination = directory.appendingPathComponent("\(baseName).md")
-        var suffix = 2
-
-        while fileManager.fileExists(atPath: destination.path) {
-            destination = directory.appendingPathComponent("\(baseName) \(suffix).md")
-            suffix += 1
-        }
-
-        try markdown.write(to: destination, atomically: true, encoding: .utf8)
-        return destination
-    }
-
     public static func suggestedBaseName(for markdown: String) -> String {
         guard let firstLine = markdown
             .split(whereSeparator: \Character.isNewline)

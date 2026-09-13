@@ -3,31 +3,16 @@ import XCTest
 @testable import AparteCore
 
 final class MarkdownFileExporterTests: XCTestCase {
-    func testExportUsesFirstHeadingAndWritesMarkdown() throws {
-        let directory = temporaryDirectory()
-        defer { try? FileManager.default.removeItem(at: directory) }
-        let markdown = "# Focused writing\n\nBody with **meaning**."
-
-        let file = try MarkdownFileExporter.export(markdown, to: directory)
-
-        XCTAssertEqual(file.lastPathComponent, "Focused writing.md")
-        XCTAssertEqual(try String(contentsOf: file, encoding: .utf8), markdown)
+    func testSuggestedNameUsesTheFirstHeadingWithoutItsMarkup() {
+        XCTAssertEqual(MarkdownFileExporter.suggestedBaseName(for: "# Focused writing\n\nBody"), "Focused writing")
     }
 
-    func testExportAddsNumberInsteadOfOverwriting() throws {
-        let directory = temporaryDirectory()
-        defer { try? FileManager.default.removeItem(at: directory) }
-        let markdown = "# New thought"
+    func testSuggestedNameReplacesPathCharactersAndStaysShort() {
+        let name = MarkdownFileExporter.suggestedBaseName(for: String(repeating: "a/b:", count: 40))
 
-        let first = try MarkdownFileExporter.export(markdown, to: directory)
-        let second = try MarkdownFileExporter.export(markdown, to: directory)
-
-        XCTAssertEqual(first.lastPathComponent, "New thought.md")
-        XCTAssertEqual(second.lastPathComponent, "New thought 2.md")
-    }
-
-    private func temporaryDirectory() -> URL {
-        FileManager.default.temporaryDirectory
-            .appendingPathComponent("AparteExportTests-\(UUID().uuidString)", isDirectory: true)
+        XCTAssertTrue(name.hasPrefix("a-b-a-b-"))
+        XCTAssertFalse(name.contains("/"))
+        XCTAssertFalse(name.contains(":"))
+        XCTAssertEqual(name.count, 80)
     }
 }

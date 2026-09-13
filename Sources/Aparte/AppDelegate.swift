@@ -38,8 +38,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         preferencesController?.updateController = updateController
         preferencesController?.onCheckForUpdates = { [weak self] in self?.checkForUpdates() }
         #endif
+        preferencesController?.onUserClose = { NSApp.hide(nil) }
         hotKeyController?.onShortcutChanged = { [weak self] _ in
-            self?.menuBarController?.updateShortcutDescription()
+            self?.refreshShortcutPresentation()
+        }
+        if let hotKeyController {
+            padController?.shortcutHint = Self.shortcutHint(for: hotKeyController)
         }
         menuBarController = MenuBarController(delegate: self)
 
@@ -59,7 +63,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             let dismissed = MainActor.assumeIsolated {
                 guard NSApp.modalWindow == nil,
                       self?.preferencesController?.isCapturingShortcut != true,
-                      self?.padController?.isVisible == true else { return false }
+                      self?.padController?.isVisible == true,
+                      event.window === self?.padController?.window else { return false }
                 if event.keyCode != 53 {
                     return self?.padController?.performOptionsKeyEquivalent(event) == true
                 }
@@ -72,9 +77,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             return dismissed ? nil : event
         }
 
+        if UserDefaults.standard.bool(forKey: "Aparte.hasLaunched") == false {
+            // A fresh install would otherwise show only a menu bar icon.
+            UserDefaults.standard.set(true, forKey: "Aparte.hasLaunched")
+            showPad()
+        }
+
         if ProcessInfo.processInfo.arguments.contains("--show-for-acceptance") {
             showPad()
         }
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        showPad()
+        return false
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -97,17 +113,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     @objc func showPad() {
         preferencesController?.closeSettings()
-        guard let padController else { return }
+        // Showing a pad that is already open would replay the fade-in as a flash.
+        guard let padController, !padController.isVisible else { return }
+        if NSApp.isHidden { NSApp.unhide(nil) }
         overlays.show()
         padController.show()
         NSApp.activate(ignoringOtherApps: true)
     }
 
     @objc func hidePad() {
+        hidePad(deactivating: true)
+    }
+
+    private func hidePad(deactivating: Bool) {
         padController?.hide()
         overlays.hide()
         documentController?.saveNow()
-        NSApp.hide(nil)
+        if deactivating { NSApp.hide(nil) }
     }
 
     @objc func copyMarkdown() {
@@ -138,9 +160,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
 
     @objc func showSettings() {
-        padController?.hide()
-        overlays.hide()
-        documentController?.saveNow()
+        hidePad(deactivating: false)
         preferencesController?.showSettings()
     }
 
@@ -160,9 +180,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     #if APARTE_DIRECT_UPDATES
     @objc func checkForUpdates() {
         guard updateController?.canCheckForUpdates == true else { return }
-        padController?.hide()
-        overlays.hide()
-        documentController?.saveNow()
+        hidePad(deactivating: false)
         updateController?.checkForUpdates()
     }
     #endif
@@ -177,10 +195,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             menuItem.state = padController?.showsCounts == true ? .on : .off
         case #selector(restoreLastCleared), #selector(discardRecovery):
             return padController?.hasRecovery == true
+        case #selector(zoomIn):
+            return padController?.canZoomIn == true
+        case #selector(zoomOut):
+            return padController?.canZoomOut == true
+        case #selector(resetZoom):
+            return padController?.isDefaultZoom == false
         default:
             break
         }
         return true
+    }
+
+    private func refreshShortcutPresentation() {
+        menuBarController?.updateShortcutDescription()
+        guard let hotKeyController else { return }
+        padController?.shortcutHint = Self.shortcutHint(for: hotKeyController)
+    }
+
+    private static func shortcutHint(for hotKeyController: HotKeyController) -> String {
+        guard hotKeyController.isRegistered else {
+            return "Set a global shortcut in Settings (⌘,) to open Aparte from any app."
+        }
+        return "\(hotKeyController.shortcutDescription) shows or hides Aparte. Escape closes it."
     }
 
     @objc private func screenLayoutChanged() {

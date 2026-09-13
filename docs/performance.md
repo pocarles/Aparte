@@ -60,6 +60,8 @@ vmmap -summary "$PID"
 
 `$PID` above is the process ID returned by `pgrep`. Do not reuse a recorded process ID on another run.
 
+The first launch with a fresh defaults domain shows the pad, so press Escape (or set `Aparte.hasLaunched`) before sampling idle CPU.
+
 ## Release rule
 
 Remeasure the packaged release after adding any background feature, updater, sync, parser dependency, or persistent observer. Hidden idle CPU must still settle near 0%, and a memory increase needs a concrete explanation.

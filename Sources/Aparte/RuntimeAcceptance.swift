@@ -151,6 +151,9 @@ enum RuntimeAcceptance {
             let hotKey = HotKeyController(action: {}, defaults: defaults)
             defer { hotKey.invalidate() }
             check(hotKey.currentShortcut == HotKeyController.defaultShortcut, "invalid-saved-shortcut-does-not-crash")
+            check(HotKeyController.displayName(for: .init(keyCode: UInt32(kVK_Space),
+                                                          modifiers: UInt32(cmdKey | controlKey | optionKey | shiftKey))) == "⌃⌥⇧⌘Space",
+                  "shortcut-display-uses-standard-modifier-order")
             let candidate = HotKeyController.Shortcut(keyCode: UInt32(kVK_ANSI_J), modifiers: UInt32(cmdKey | optionKey | controlKey | shiftKey))
             if case .success = hotKey.updateShortcut(candidate) {
                 check(hotKey.activeShortcut == candidate, "shortcut-registers-new-choice")
@@ -207,6 +210,8 @@ enum RuntimeAcceptance {
                   "settings-records-and-saves-shortcut-in-place")
             recorder.resetButton?.performClick(nil)
             check(recordingHotKey.currentShortcut == HotKeyController.defaultShortcut, "settings-resets-shortcut-to-option-space")
+            check(recorder.resetButton?.isEnabled == (recordingHotKey.currentShortcut != HotKeyController.defaultShortcut),
+                  "settings-reset-disabled-at-default")
             recorder.shortcutButton?.performClick(nil)
             recorder.closeSettings()
             check(!recorder.isCapturingShortcut && !recorder.handleShortcutEvent(recordedEvent), "settings-close-stops-capture")
@@ -450,9 +455,11 @@ enum RuntimeAcceptance {
                 editor.setSelectedRange(NSRange(location: 0, length: editor.string.utf16.count))
                 let kind: AparteListKind = marker == "12. " ? .ordered : .unordered
                 editor.applyList(kind)
+                check(editor.string == "Item" && document.markdown == "Item", "list-action-toggles-off-\(marker)")
                 editor.setSelectedRange(NSRange(location: 0, length: editor.string.utf16.count))
                 editor.applyList(kind)
-                check(editor.string == marker + "Item", "list-action-idempotent-\(marker)")
+                check(editor.string == (kind == .unordered ? "• Item" : "1. Item"),
+                      "list-action-reapplies-canonical-marker-\(marker)")
                 editor.setSelectedRange(NSRange(location: 0, length: editor.string.utf16.count))
                 editor.applyHeading(level: 1)
                 check(editor.string == "Item" && document.markdown == "# Item", "heading-replaces-list-\(marker)")
@@ -468,7 +475,7 @@ enum RuntimeAcceptance {
             check(editor.string == "1. One\n2. Two\n3. Three", "list-conversion-numbers-all-selected-paragraphs")
             editor.setSelectedRange(NSRange(location: 0, length: editor.string.utf16.count))
             editor.applyList(.ordered)
-            check(editor.string == "1. One\n2. Two\n3. Three", "numbered-list-reapplication-is-idempotent")
+            check(editor.string == "One\nTwo\nThree", "numbered-list-reapplication-toggles-off")
             pad.setMarkdownForRuntimeCheck("One\n")
             editor.setSelectedRange(NSRange(location: editor.string.utf16.count, length: 0))
             editor.applyList(.unordered)
@@ -483,6 +490,84 @@ enum RuntimeAcceptance {
             editor.setSelectedRange(NSRange(location: 0, length: 3))
             editor.copyMarkdown(to: clipboard)
             check(clipboard.string(forType: .string) == "*wor*", "partial-heading-copy-preserves-inline-italic")
+
+            pad.setMarkdownForRuntimeCheck("# Item")
+            editor.setSelectedRange(NSRange(location: 0, length: editor.string.utf16.count))
+            editor.applyHeading(level: 1)
+            check(editor.string == "Item" && document.markdown == "Item", "heading-toggles-off")
+
+            editor.replaceAll(with: NSAttributedString(string: "word", attributes: AparteTypography.baseAttributes))
+            editor.undoManager?.removeAllActions()
+            editor.setSelectedRange(NSRange(location: 0, length: editor.string.utf16.count))
+            editor.toggleBold(nil)
+            let boldedMarkdown = document.markdown
+            drainRunLoop(for: 0.05)
+            pad.undoForRuntimeCheck()
+            check(boldedMarkdown == "**word**" && document.markdown == "word", "bold-is-undoable")
+
+            editor.replaceAll(with: NSAttributedString(string: "word", attributes: AparteTypography.baseAttributes))
+            editor.undoManager?.removeAllActions()
+            editor.setSelectedRange(NSRange(location: 0, length: editor.string.utf16.count))
+            editor.applyHeading(level: 1)
+            let headingMarkdown = document.markdown
+            drainRunLoop(for: 0.05)
+            pad.undoForRuntimeCheck()
+            check(headingMarkdown == "# word" && document.markdown == "word", "heading-is-one-undo-step")
+
+            pad.setMarkdownForRuntimeCheck("One\nTwo")
+            editor.undoManager?.removeAllActions()
+            editor.setSelectedRange(NSRange(location: 0, length: editor.string.utf16.count))
+            editor.applyList(.unordered)
+            let listedMarkdown = document.markdown
+            drainRunLoop(for: 0.05)
+            pad.undoForRuntimeCheck()
+            check(listedMarkdown == "- One\n- Two" && document.markdown == "One\n\nTwo", "list-is-one-undo-step")
+
+            editor.replaceAll(with: NSAttributedString(string: "word", attributes: AparteTypography.baseAttributes))
+            editor.setSelectedRange(NSRange(location: editor.string.utf16.count, length: 0))
+            editor.toggleBold(nil)
+            editor.insertText("x", replacementRange: editor.selectedRange())
+            check(document.markdown == "word**x**", "caret-bold-applies-to-typing")
+
+            pad.setMarkdownForRuntimeCheck("# word")
+            editor.setSelectedRange(NSRange(location: 0, length: editor.string.utf16.count))
+            editor.toggleBold(nil)
+            let boldHeadingMarkdown = document.markdown
+            editor.setSelectedRange(NSRange(location: 0, length: editor.string.utf16.count))
+            editor.toggleBold(nil)
+            check(boldHeadingMarkdown == "# **word**" && document.markdown == "# word", "heading-inline-bold-round-trips")
+
+            editor.replaceAll(with: NSAttributedString(string: "• Item", attributes: AparteTypography.baseAttributes))
+            editor.setSelectedRange(NSRange(location: 2, length: 0))
+            editor.deleteBackward(nil)
+            check(editor.string == "Item" && document.markdown == "Item", "backspace-after-marker-removes-it")
+
+            editor.replaceAll(with: NSAttributedString(string: "• Item", attributes: AparteTypography.baseAttributes))
+            editor.setSelectedRange(NSRange(location: 0, length: 2))
+            editor.delete(nil)
+            check(document.markdown == "Item", "deleted-marker-is-not-a-list")
+
+            editor.replaceAll(with: NSAttributedString(string: "hello world", attributes: AparteTypography.baseAttributes))
+            editor.setSelectedRange(NSRange(location: 6, length: 5))
+            editor.cutSelection(to: clipboard)
+            check(clipboard.string(forType: .string) == "world" && clipboard.data(forType: .rtf) == nil
+                  && editor.string == "hello ", "cut-writes-normalized-clipboard")
+
+            editor.replaceAll(with: NSAttributedString(string: "Item", attributes: AparteTypography.baseAttributes))
+            editor.setSelectedRange(NSRange(location: 2, length: 0))
+            editor.applyList(.unordered)
+            check(editor.selectedRange() == NSRange(location: 4, length: 0), "block-command-keeps-caret-on-content")
+
+            editor.replaceAll(with: NSAttributedString(string: "Item", attributes: AparteTypography.baseAttributes))
+            editor.setSelectedRange(NSRange(location: 2, length: 2))
+            editor.applyList(.unordered)
+            check(editor.selectedRange() == NSRange(location: 4, length: 2), "block-command-keeps-partial-selection")
+
+            pad.setMarkdownForRuntimeCheck("**bold** plain")
+            editor.setSelectedRange(NSRange(location: 2, length: 0))
+            editor.applyList(.unordered)
+            editor.insertText("x", replacementRange: editor.selectedRange())
+            check(document.markdown == "- **boxld** plain", "block-command-continues-inline-traits")
 
             pad.setMarkdownForRuntimeCheck("First paragraph")
             editor.setSelectedRange(NSRange(location: editor.string.utf16.count, length: 0))
@@ -530,6 +615,21 @@ enum RuntimeAcceptance {
             pad.zoomIn()
             pad.resetZoom()
             check(pad.zoomForRuntimeCheck == 1, "zoom-reset")
+            for _ in 0..<9 { pad.zoomIn() }
+            let atMaximumZoom = !pad.canZoomIn && pad.canZoomOut
+            pad.resetZoom()
+            check(atMaximumZoom && pad.isDefaultZoom && pad.canZoomIn, "zoom-limits-reported")
+            pad.selectForRuntimeCheck(NSRange(location: 0, length: 5))
+            drainRunLoop(for: 0.05)
+            if pad.runtimeSnapshot().formattingBarIsVisible {
+                pad.zoomIn()
+                pad.resetZoom()
+                drainRunLoop(for: 0.05)
+                check(pad.runtimeSnapshot().formattingBarIsVisible, "zoom-keeps-formatting-bar")
+            } else { failed.append("zoom-keeps-formatting-bar") }
+            pad.selectForRuntimeCheck(NSRange(location: 0, length: 0))
+            pad.shortcutHint = "⌥Space shows or hides Aparte. Escape closes it."
+            check(pad.editorForRuntimeCheck.placeholderHint == pad.shortcutHint, "placeholder-hint-follows-shortcut")
             pad.toggleCounts()
             check(!pad.showsCounts && !defaults.bool(forKey: "showWordCount"), "counter-can-be-disabled")
 
@@ -618,6 +718,18 @@ enum RuntimeAcceptance {
             pad.hide()
             pad.show()
             check(!pad.isOptionsMenuOpen, "hiding-pad-clears-options-card")
+
+            let sheet = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 200, height: 100),
+                                 styleMask: .titled, backing: .buffered, defer: false)
+            sheet.isReleasedWhenClosed = false
+            pad.window.beginSheet(sheet)
+            drainRunLoop(for: 0.05)
+            pad.hide()
+            drainRunLoop(for: 0.1)
+            check(pad.window.attachedSheet == nil, "hide-ends-attached-sheet")
+            sheet.close()
+            pad.show()
+            pad.window.makeFirstResponder(editor)
 
             func leaves(_ menu: NSMenu) -> [NSMenuItem] {
                 menu.items.flatMap { item in

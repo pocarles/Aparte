@@ -2,7 +2,6 @@ import AppKit
 
 public extension NSAttributedString.Key {
     static let aparteHeadingLevel = NSAttributedString.Key("com.pocarles.aparte.headingLevel")
-    static let aparteListKind = NSAttributedString.Key("com.pocarles.aparte.listKind")
     static let aparteInlineOnly = NSAttributedString.Key("com.pocarles.aparte.inlineOnly")
     static let aparteInlineBold = NSAttributedString.Key("com.pocarles.aparte.inlineBold")
 }
@@ -30,10 +29,47 @@ public enum AparteTypography {
         return traits
     }
 
-    public static func headingFont(level: Int) -> NSFont {
+    public static func headingSize(level: Int) -> CGFloat {
         let sizes: [CGFloat] = [30, 24, 20, 18, 17, 16]
         let index = min(max(level, 1), sizes.count) - 1
-        return .systemFont(ofSize: sizes[index], weight: .semibold)
+        return sizes[index]
+    }
+
+    public static func headingFont(level: Int) -> NSFont {
+        .systemFont(ofSize: headingSize(level: level), weight: .semibold)
+    }
+
+    /// The single place fonts are built. A heading is already semibold, which is
+    /// reported as bold, so inline bold inside one needs a visibly heavier face.
+    public static func font(headingLevel: Int?, traits: NSFontTraitMask) -> NSFont {
+        var font: NSFont
+        if let headingLevel {
+            font = traits.contains(.boldFontMask)
+                ? .systemFont(ofSize: headingSize(level: headingLevel), weight: .heavy)
+                : headingFont(level: headingLevel)
+        } else {
+            font = bodyFont
+            if traits.contains(.boldFontMask) {
+                font = NSFontManager.shared.convert(font, toHaveTrait: .boldFontMask)
+            }
+        }
+        if traits.contains(.italicFontMask) {
+            font = NSFontManager.shared.convert(font, toHaveTrait: .italicFontMask)
+        }
+        return font
+    }
+
+    public static func applyInlineTraits(
+        _ traits: NSFontTraitMask,
+        to attributes: inout [NSAttributedString.Key: Any]
+    ) {
+        let level = attributes[.aparteHeadingLevel] as? Int
+        attributes[.font] = font(headingLevel: level, traits: traits)
+        if level != nil {
+            attributes[.aparteInlineBold] = traits.contains(.boldFontMask)
+        } else {
+            attributes.removeValue(forKey: .aparteInlineBold)
+        }
     }
 
     public static var bodyParagraphStyle: NSParagraphStyle {

@@ -6,6 +6,9 @@ final class EditorTextView: NSTextView {
     var onDismiss: (() -> Void)?
     var onSelectionChanged: (() -> Void)?
     var onAddLink: (() -> Void)?
+    var placeholderHint: String? {
+        didSet { needsDisplay = true }
+    }
 
     @objc func makeHeading(_ sender: Any?) { applyHeading(level: 1) }
     @objc func makeBulletedList(_ sender: Any?) { applyList(.unordered) }
@@ -13,22 +16,82 @@ final class EditorTextView: NSTextView {
     @objc func addLink(_ sender: Any?) { onAddLink?() }
 
     override func validateUserInterfaceItem(_ item: NSValidatedUserInterfaceItem) -> Bool {
+        let enabled: Bool
         switch item.action {
-        case #selector(toggleBold(_:)), #selector(toggleItalic(_:)), #selector(toggleUnderline(_:)), #selector(addLink(_:)):
-            return selectedRange().length > 0
+        // Inline traits also apply to what is typed next, so a selection is optional.
+        case #selector(toggleBold(_:)), #selector(toggleItalic(_:)), #selector(toggleUnderline(_:)):
+            enabled = true
+        case #selector(addLink(_:)):
+            enabled = selectedRange().length > 0
         case #selector(makeHeading(_:)), #selector(makeBulletedList(_:)), #selector(makeNumberedList(_:)):
-            return !string.isEmpty
-        default: return super.validateUserInterfaceItem(item)
+            enabled = !string.isEmpty
+        default:
+            return super.validateUserInterfaceItem(item)
         }
+        if let menuItem = item as? NSMenuItem {
+            menuItem.state = commandIsActive(item.action) ? .on : .off
+        }
+        return enabled
+    }
+
+    private func commandIsActive(_ action: Selector?) -> Bool {
+        switch action {
+        case #selector(toggleBold(_:)):
+            return AparteTypography.inlineTraits(in: attributesForCommandState()).contains(.boldFontMask)
+        case #selector(toggleItalic(_:)):
+            return AparteTypography.inlineTraits(in: attributesForCommandState()).contains(.italicFontMask)
+        case #selector(toggleUnderline(_:)):
+            return (attributesForCommandState()[.underlineStyle] as? Int ?? 0) != 0
+        case #selector(makeHeading(_:)):
+            guard let line = lineAtSelectionStart(), let textStorage, line.length > 0 else { return false }
+            return textStorage.attribute(.aparteHeadingLevel, at: line.location, effectiveRange: nil) != nil
+        case #selector(makeBulletedList(_:)):
+            return markerAtSelectionStart()?.kind == .unordered
+        case #selector(makeNumberedList(_:)):
+            return markerAtSelectionStart()?.kind == .ordered
+        default:
+            return false
+        }
+    }
+
+    private func attributesForCommandState() -> [NSAttributedString.Key: Any] {
+        let range = selectedRange()
+        guard range.length > 0, let textStorage, range.location < textStorage.length else {
+            return typingAttributes
+        }
+        return textStorage.attributes(at: range.location, effectiveRange: nil)
+    }
+
+    private func lineAtSelectionStart() -> NSRange? {
+        guard let textStorage, textStorage.length > 0,
+              let paragraph = paragraphRange(for: NSRange(location: selectedRange().location, length: 0))
+        else { return nil }
+        return contentRange(of: paragraph, in: textStorage.string as NSString)
+    }
+
+    private func markerAtSelectionStart() -> ListContinuation.Marker? {
+        guard let textStorage, let line = lineAtSelectionStart() else { return nil }
+        return ListContinuation.marker(in: (textStorage.string as NSString).substring(with: line))
     }
 
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
         guard string.isEmpty else { return }
-        NSString(string: "Type or paste here...").draw(
-            at: NSPoint(x: textContainerInset.width, y: textContainerInset.height),
+        let bodyFont = AparteTypography.bodyFont
+        let origin = NSPoint(x: textContainerInset.width, y: textContainerInset.height)
+        NSString(string: "Type or paste here…").draw(
+            at: origin,
             withAttributes: [
-                .font: AparteTypography.bodyFont,
+                .font: bodyFont,
+                .foregroundColor: NSColor.placeholderTextColor,
+            ]
+        )
+        guard let placeholderHint, !placeholderHint.isEmpty else { return }
+        let bodyLineHeight = bodyFont.ascender - bodyFont.descender + bodyFont.leading
+        NSString(string: placeholderHint).draw(
+            at: NSPoint(x: origin.x, y: origin.y + bodyLineHeight + 6),
+            withAttributes: [
+                .font: NSFont.systemFont(ofSize: 13),
                 .foregroundColor: NSColor.placeholderTextColor,
             ]
         )
@@ -50,6 +113,13 @@ final class EditorTextView: NSTextView {
         }
     }
 
+    override func deleteBackward(_ sender: Any?) {
+        guard deleteListMarker() else {
+            super.deleteBackward(sender)
+            return
+        }
+    }
+
     override func copy(_ sender: Any?) {
         copySelection(to: .general)
     }
@@ -59,6 +129,21 @@ final class EditorTextView: NSTextView {
         guard let textStorage, range.length > 0,
               NSMaxRange(range) <= textStorage.length else { return }
         writeToPasteboard(ParagraphFormatting.copyText(from: textStorage, range: range), pasteboard: pasteboard)
+    }
+
+    override func cut(_ sender: Any?) {
+        guard selectedRange().length > 0 else {
+            super.cut(sender)
+            return
+        }
+        cutSelection(to: .general)
+    }
+
+    /// Cut writes the same normalized content as copy, never Aparte's own fonts.
+    func cutSelection(to pasteboard: NSPasteboard) {
+        guard selectedRange().length > 0 else { return }
+        copySelection(to: pasteboard)
+        delete(nil)
     }
 
     override func paste(_ sender: Any?) {
@@ -136,7 +221,15 @@ final class EditorTextView: NSTextView {
 
     @objc func toggleUnderline(_ sender: Any?) {
         let range = selectedRange()
-        guard range.length > 0, let textStorage else { return }
+        guard let textStorage, NSMaxRange(range) <= textStorage.length else { return }
+        guard range.length > 0 else {
+            var attributes = typingAttributes
+            let current = attributes[.underlineStyle] as? Int ?? 0
+            attributes[.underlineStyle] = current == 0 ? NSUnderlineStyle.single.rawValue : 0
+            typingAttributes = attributes
+            return
+        }
+        guard shouldChangeText(in: range, replacementString: nil) else { return }
         let current = textStorage.attribute(.underlineStyle, at: range.location, effectiveRange: nil) as? Int ?? 0
         textStorage.addAttribute(
             .underlineStyle,
@@ -148,51 +241,156 @@ final class EditorTextView: NSTextView {
 
     func applyHeading(level: Int) {
         guard let textStorage, textStorage.length > 0 else { return }
-        textStorage.beginEditing()
-        for line in selectedLineRanges().reversed() {
-            let marker = ListContinuation.marker(in: (string as NSString).substring(with: line))
-            let removed = marker?.utf16Length ?? 0
-            if removed > 0 { textStorage.deleteCharacters(in: NSRange(location: line.location, length: removed)) }
-            let range = NSRange(location: line.location, length: line.length - removed)
-            textStorage.removeAttribute(.aparteListKind, range: range)
-            textStorage.removeAttribute(.aparteInlineOnly, range: range)
-            textStorage.enumerateAttributes(in: range) { attributes, run, _ in
-                let traits = AparteTypography.inlineTraits(in: attributes)
-                let font = NSFontManager.shared.convert(AparteTypography.headingFont(level: level), toHaveTrait: traits)
-                textStorage.addAttributes([.font: font, .aparteHeadingLevel: level,
-                                           .aparteInlineBold: traits.contains(.boldFontMask),
-                                           .paragraphStyle: AparteTypography.bodyParagraphStyle], range: run)
-            }
+        let lines = selectedLineRanges()
+        let alreadyHeading = !lines.isEmpty && lines.allSatisfy { line in
+            guard line.length > 0 else { return false }
+            return textStorage.attribute(.aparteHeadingLevel, at: line.location, effectiveRange: nil) as? Int == level
         }
-        textStorage.endEditing()
-        didChangeText()
+
+        applyBlockCommand { _, line, marker in
+            let text = NSMutableAttributedString(attributedString: line)
+            if alreadyHeading {
+                let range = NSRange(location: 0, length: text.length)
+                var fonts: [(NSRange, NSFont)] = []
+                text.enumerateAttributes(in: range) { attributes, run, _ in
+                    fonts.append((run, AparteTypography.font(headingLevel: nil,
+                                                             traits: AparteTypography.inlineTraits(in: attributes))))
+                }
+                for (run, font) in fonts { text.addAttribute(.font, value: font, range: run) }
+                if text.length > 0 {
+                    text.removeAttribute(.aparteHeadingLevel, range: range)
+                    text.removeAttribute(.aparteInlineBold, range: range)
+                    text.removeAttribute(.aparteInlineOnly, range: range)
+                    text.addAttribute(.paragraphStyle, value: AparteTypography.bodyParagraphStyle, range: range)
+                }
+                return (text, marker?.utf16Length ?? 0)
+            }
+
+            if let marker { text.deleteCharacters(in: NSRange(location: 0, length: marker.utf16Length)) }
+            let range = NSRange(location: 0, length: text.length)
+            var updates: [(NSRange, [NSAttributedString.Key: Any])] = []
+            text.enumerateAttributes(in: range) { attributes, run, _ in
+                var updated = attributes
+                let traits = AparteTypography.inlineTraits(in: attributes)
+                updated.removeValue(forKey: .aparteInlineOnly)
+                updated[.aparteHeadingLevel] = level
+                AparteTypography.applyInlineTraits(traits, to: &updated)
+                updated[.paragraphStyle] = AparteTypography.bodyParagraphStyle
+                updates.append((run, updated))
+            }
+            for (run, attributes) in updates { text.setAttributes(attributes, range: run) }
+            return (text, 0)
+        }
     }
 
     func applyList(_ kind: AparteListKind) {
         guard let textStorage, textStorage.length > 0 else { return }
+        let source = textStorage.string as NSString
         let lines = selectedLineRanges()
-        textStorage.beginEditing()
-        for (offset, line) in lines.enumerated().reversed() {
-            let existing = ListContinuation.marker(in: (string as NSString).substring(with: line))
-            let marker = existing?.kind == kind ? existing!.prefix : kind == .unordered ? "• " : "\(offset + 1). "
-            let removed = existing?.utf16Length ?? 0
-            textStorage.replaceCharacters(in: NSRange(location: line.location, length: removed),
-                                          with: NSAttributedString(string: marker, attributes: AparteTypography.baseAttributes))
-            let range = NSRange(location: line.location, length: line.length - removed + marker.utf16.count)
-            textStorage.enumerateAttributes(in: range) { attributes, run, _ in
+        let alreadyList = !lines.isEmpty && lines.allSatisfy { line in
+            ListContinuation.marker(in: source.substring(with: line))?.kind == kind
+        }
+        var markerAttributes = AparteTypography.baseAttributes
+        markerAttributes[.paragraphStyle] = AparteTypography.listParagraphStyle
+
+        applyBlockCommand { index, line, marker in
+            let text = NSMutableAttributedString(attributedString: line)
+            if let marker { text.deleteCharacters(in: NSRange(location: 0, length: marker.utf16Length)) }
+            if alreadyList {
+                if text.length > 0 {
+                    text.addAttribute(.paragraphStyle, value: AparteTypography.bodyParagraphStyle,
+                                      range: NSRange(location: 0, length: text.length))
+                }
+                return (text, 0)
+            }
+
+            let content = NSRange(location: 0, length: text.length)
+            var fonts: [(NSRange, NSFont)] = []
+            text.enumerateAttributes(in: content) { attributes, run, _ in
                 if attributes[.aparteHeadingLevel] != nil {
-                    let font = NSFontManager.shared.convert(AparteTypography.bodyFont,
-                                                           toHaveTrait: AparteTypography.inlineTraits(in: attributes))
-                    textStorage.addAttribute(.font, value: font, range: run)
+                    fonts.append((run, AparteTypography.font(headingLevel: nil,
+                                                             traits: AparteTypography.inlineTraits(in: attributes))))
                 }
             }
-            textStorage.removeAttribute(.aparteHeadingLevel, range: range)
-            textStorage.removeAttribute(.aparteInlineBold, range: range)
-            textStorage.removeAttribute(.aparteInlineOnly, range: range)
-            textStorage.addAttributes([.aparteListKind: kind.rawValue, .paragraphStyle: AparteTypography.listParagraphStyle], range: range)
+            for (run, font) in fonts { text.addAttribute(.font, value: font, range: run) }
+            if text.length > 0 {
+                text.removeAttribute(.aparteHeadingLevel, range: content)
+                text.removeAttribute(.aparteInlineBold, range: content)
+                text.removeAttribute(.aparteInlineOnly, range: content)
+            }
+            let prefix = marker?.kind == kind
+                ? marker!.prefix
+                : kind == .unordered ? "• " : "\(index + 1). "
+            text.insert(NSAttributedString(string: prefix, attributes: markerAttributes), at: 0)
+            text.addAttribute(.paragraphStyle, value: AparteTypography.listParagraphStyle,
+                              range: NSRange(location: 0, length: text.length))
+            return (text, prefix.utf16.count)
         }
-        textStorage.endEditing()
-        didChangeText()
+    }
+
+    /// Block commands rewrite their paragraphs in one replacement, so a single
+    /// undo restores the previous characters and attributes together.
+    private func applyBlockCommand(
+        _ transform: (Int, NSAttributedString, ListContinuation.Marker?) -> (text: NSAttributedString, prefixLength: Int)
+    ) {
+        guard let textStorage, textStorage.length > 0 else { return }
+        let source = textStorage.string as NSString
+        let paragraphRange = source.paragraphRange(for: selectedRange())
+        let lines = selectedLineRanges()
+        guard !lines.isEmpty else { return }
+
+        let replacement = NSMutableAttributedString()
+        var oldPrefixLengths: [Int] = []
+        var newPrefixLengths: [Int] = []
+        var newStarts: [Int] = []
+        var newEnds: [Int] = []
+        for (index, line) in lines.enumerated() {
+            let marker = ListContinuation.marker(in: source.substring(with: line))
+            let (text, prefixLength) = transform(index, textStorage.attributedSubstring(from: line), marker)
+            oldPrefixLengths.append(marker?.utf16Length ?? 0)
+            newPrefixLengths.append(prefixLength)
+            newStarts.append(paragraphRange.location + replacement.length)
+            replacement.append(text)
+            newEnds.append(paragraphRange.location + replacement.length)
+
+            let terminatorStart = NSMaxRange(line)
+            let terminatorEnd = index + 1 < lines.count ? lines[index + 1].location : NSMaxRange(paragraphRange)
+            if terminatorEnd > terminatorStart {
+                replacement.append(textStorage.attributedSubstring(
+                    from: NSRange(location: terminatorStart, length: terminatorEnd - terminatorStart)
+                ))
+            }
+        }
+
+        // Each selection endpoint stays on the same content character of its line.
+        func mapped(_ location: Int) -> Int {
+            guard let index = lines.firstIndex(where: { location <= NSMaxRange($0) }) else {
+                return paragraphRange.location + replacement.length
+            }
+            let offset = max(0, location - (lines[index].location + oldPrefixLengths[index]))
+            return min(newStarts[index] + newPrefixLengths[index] + offset, newEnds[index])
+        }
+        let selection = selectedRange()
+        let start = mapped(selection.location)
+        let end = selection.length == 0 ? start : max(start, mapped(NSMaxRange(selection)))
+        let newSelection = NSRange(location: start, length: end - start)
+
+        guard replaceText(in: paragraphRange, with: replacement, selecting: newSelection) else { return }
+        typingAttributes = blockTypingAttributes(at: newSelection.location)
+    }
+
+    /// Typing continues the attributes beside the caret, including inline traits.
+    /// At a paragraph start the line's own first character decides, as AppKit does.
+    private func blockTypingAttributes(at location: Int) -> [NSAttributedString.Key: Any] {
+        guard let textStorage, textStorage.length > 0 else { return AparteTypography.baseAttributes }
+        let source = textStorage.string as NSString
+        let clamped = min(max(location, 0), source.length)
+        let paragraphStart = source.paragraphRange(for: NSRange(location: clamped, length: 0)).location
+        let probe = clamped == paragraphStart ? clamped : clamped - 1
+        guard probe < textStorage.length else { return AparteTypography.baseAttributes }
+        var typing = textStorage.attributes(at: probe, effectiveRange: nil)
+        typing.removeValue(forKey: .aparteInlineOnly)
+        return typing
     }
 
     private func selectedLineRanges() -> [NSRange] {
@@ -211,6 +409,7 @@ final class EditorTextView: NSTextView {
         let range = range ?? selectedRange()
         guard range.length > 0, let textStorage else { return }
         guard NSMaxRange(range) <= textStorage.length else { return }
+        guard shouldChangeText(in: range, replacementString: nil) else { return }
         textStorage.addAttributes(
             [.link: url, .foregroundColor: NSColor.linkColor, .underlineStyle: NSUnderlineStyle.single.rawValue],
             range: range
@@ -227,21 +426,42 @@ final class EditorTextView: NSTextView {
 
     private func toggleFontTrait(_ trait: NSFontTraitMask) {
         let range = selectedRange()
-        guard range.length > 0, let textStorage else { return }
+        guard let textStorage, NSMaxRange(range) <= textStorage.length else { return }
+        guard range.length > 0 else {
+            typingAttributes = toggling(trait, in: typingAttributes)
+            return
+        }
+        guard shouldChangeText(in: range, replacementString: nil) else { return }
+
+        var updates: [(NSRange, [NSAttributedString.Key: Any])] = []
+        textStorage.enumerateAttributes(in: range) { attributes, runRange, _ in
+            updates.append((runRange, toggling(trait, in: attributes)))
+        }
         textStorage.beginEditing()
-        textStorage.enumerateAttribute(.font, in: range) { value, runRange, _ in
-            let font = value as? NSFont ?? AparteTypography.bodyFont
-            let currentTraits = NSFontManager.shared.traits(of: font)
-            let converted: NSFont
-            if currentTraits.contains(trait) {
-                converted = NSFontManager.shared.convert(font, toNotHaveTrait: trait)
-            } else {
-                converted = NSFontManager.shared.convert(font, toHaveTrait: trait)
+        for (runRange, attributes) in updates {
+            if let font = attributes[.font] {
+                textStorage.addAttribute(.font, value: font, range: runRange)
             }
-            textStorage.addAttribute(.font, value: converted, range: runRange)
+            if let inlineBold = attributes[.aparteInlineBold] {
+                textStorage.addAttribute(.aparteInlineBold, value: inlineBold, range: runRange)
+            } else {
+                textStorage.removeAttribute(.aparteInlineBold, range: runRange)
+            }
         }
         textStorage.endEditing()
         didChangeText()
+    }
+
+    /// One transform for runs and for typing attributes, so a caret toggle and a
+    /// selection toggle cannot disagree.
+    private func toggling(
+        _ trait: NSFontTraitMask,
+        in attributes: [NSAttributedString.Key: Any]
+    ) -> [NSAttributedString.Key: Any] {
+        var result = attributes
+        let next = AparteTypography.inlineTraits(in: attributes).symmetricDifference(trait)
+        AparteTypography.applyInlineTraits(next, to: &result)
+        return result
     }
 
     @discardableResult
@@ -280,8 +500,7 @@ final class EditorTextView: NSTextView {
             return false
         }
         let line = source.substring(with: contentRange)
-        let storedKind = storedListKind(in: contentRange, from: textStorage)
-        guard let marker = ListContinuation.marker(in: line, listKind: storedKind) else {
+        guard let marker = ListContinuation.marker(in: line) else {
             return false
         }
 
@@ -291,8 +510,7 @@ final class EditorTextView: NSTextView {
         if selection.length == 0,
            selection.location == NSMaxRange(contentRange),
            ListContinuation.isEmptyItem(in: line, marker: marker) {
-            var base = AparteTypography.baseAttributes
-            base.removeValue(forKey: .aparteListKind)
+            let base = AparteTypography.baseAttributes
             let empty = NSAttributedString(string: "", attributes: base)
             guard replaceText(
                 in: contentRange,
@@ -305,26 +523,15 @@ final class EditorTextView: NSTextView {
             return true
         }
 
-        let continuationMarker = markerForContinuation(
-            marker,
-            storedKind: storedKind,
-            paragraphRange: paragraphRange,
-            in: textStorage
-        )
-        let nextMarker = ListContinuation.nextMarker(after: continuationMarker)
+        let nextMarker = ListContinuation.nextMarker(after: marker)
         var markerAttributes = AparteTypography.baseAttributes
         markerAttributes[.paragraphStyle] = AparteTypography.listParagraphStyle
-        if let storedKind {
-            markerAttributes[.aparteListKind] = storedKind.rawValue
-        }
 
         let replacement = NSMutableAttributedString(
             string: "\n",
             attributes: AparteTypography.baseAttributes
         )
-        if !nextMarker.isEmpty {
-            replacement.append(NSAttributedString(string: nextMarker, attributes: markerAttributes))
-        }
+        replacement.append(NSAttributedString(string: nextMarker, attributes: markerAttributes))
 
         let selectionAfter = NSRange(
             location: selection.location + replacement.length,
@@ -334,6 +541,47 @@ final class EditorTextView: NSTextView {
             return false
         }
         typingAttributes = markerAttributes
+        return true
+    }
+
+    /// Backspace immediately after a marker removes the whole marker, and the
+    /// line stops being a list item.
+    private func deleteListMarker() -> Bool {
+        guard let textStorage, textStorage.length > 0 else { return false }
+        let selection = selectedRange()
+        guard selection.length == 0,
+              selection.location > 0,
+              selection.location <= textStorage.length
+        else {
+            return false
+        }
+
+        let source = textStorage.string as NSString
+        let line = contentRange(
+            of: source.paragraphRange(for: NSRange(location: selection.location, length: 0)),
+            in: source
+        )
+        guard let marker = ListContinuation.marker(in: source.substring(with: line)),
+              selection.location == line.location + marker.utf16Length
+        else {
+            return false
+        }
+
+        guard replaceText(
+            in: NSRange(location: line.location, length: marker.utf16Length),
+            with: NSAttributedString(string: "", attributes: AparteTypography.baseAttributes),
+            selecting: NSRange(location: line.location, length: 0)
+        ) else {
+            return false
+        }
+
+        let paragraph = (textStorage.string as NSString)
+            .paragraphRange(for: NSRange(location: line.location, length: 0))
+        if paragraph.length > 0, shouldChangeText(in: paragraph, replacementString: nil) {
+            textStorage.addAttribute(.paragraphStyle, value: AparteTypography.bodyParagraphStyle, range: paragraph)
+            didChangeText()
+        }
+        typingAttributes = AparteTypography.baseAttributes
         return true
     }
 
@@ -366,42 +614,6 @@ final class EditorTextView: NSTextView {
         return result
     }
 
-    private func markerForContinuation(
-        _ marker: ListContinuation.Marker,
-        storedKind: AparteListKind?,
-        paragraphRange: NSRange,
-        in textStorage: NSTextStorage
-    ) -> ListContinuation.Marker {
-        guard marker.kind == .ordered,
-              marker.number == nil,
-              storedKind == .ordered
-        else {
-            return marker
-        }
-
-        let source = textStorage.string as NSString
-        var precedingItems = 0
-        var cursor = paragraphRange.location
-        while cursor > 0 {
-            let previousParagraph = source.paragraphRange(
-                for: NSRange(location: cursor - 1, length: 0)
-            )
-            let previousContent = contentRange(of: previousParagraph, in: source)
-            guard storedListKind(in: previousContent, from: textStorage) == .ordered else {
-                break
-            }
-            precedingItems += 1
-            cursor = previousParagraph.location
-        }
-
-        let currentNumber = precedingItems == Int.max ? Int.max : precedingItems + 1
-        return ListContinuation.Marker(
-            kind: .ordered,
-            number: currentNumber,
-            prefix: marker.prefix
-        )
-    }
-
     private func writeToPasteboard(
         _ attributedString: NSAttributedString,
         pasteboard: NSPasteboard
@@ -409,19 +621,5 @@ final class EditorTextView: NSTextView {
         pasteboard.clearContents()
         pasteboard.setString(ParagraphFormatting.plainText(from: attributedString), forType: .string)
         pasteboard.setString(ParagraphFormatting.html(from: attributedString), forType: .html)
-    }
-
-    private func storedListKind(
-        in range: NSRange,
-        from textStorage: NSTextStorage
-    ) -> AparteListKind? {
-        guard range.length > 0 else { return nil }
-        var result: AparteListKind?
-        textStorage.enumerateAttribute(.aparteListKind, in: range) { value, _, stop in
-            guard result == nil, let rawValue = value as? String else { return }
-            result = AparteListKind(rawValue: rawValue)
-            if result != nil { stop.pointee = true }
-        }
-        return result
     }
 }

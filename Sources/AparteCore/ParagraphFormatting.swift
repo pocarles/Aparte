@@ -12,7 +12,6 @@ public enum ParagraphFormatting {
         let source = text.string as NSString
         var result: [Block] = []
         var cursor = 0
-        var orderedNumber: Int?
         while cursor < source.length {
             var end = 0
             var contentsEnd = 0
@@ -22,20 +21,13 @@ public enum ParagraphFormatting {
             let line = source.substring(with: range)
             if !line.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 let attributes = text.attributes(at: cursor, effectiveRange: nil)
-                let kind = (attributes[.aparteListKind] as? String).flatMap(AparteListKind.init(rawValue:))
                 let inlineOnly = attributes[.aparteInlineOnly] as? Bool == true
-                var marker = inlineOnly ? nil : ListContinuation.marker(in: line, listKind: kind)
-                if let item = marker, item.kind == .ordered {
-                    let number = item.number ?? orderedNumber.map { $0 == Int.max ? Int.max : $0 + 1 } ?? 1
-                    marker = ListContinuation.Marker(kind: .ordered, number: number, prefix: item.prefix)
-                    orderedNumber = number
-                } else { orderedNumber = nil }
                 result.append(Block(
                     range: range,
-                    marker: marker,
+                    marker: inlineOnly ? nil : ListContinuation.marker(in: line),
                     headingLevel: inlineOnly ? 0 : attributes[.aparteHeadingLevel] as? Int ?? 0
                 ))
-            } else { orderedNumber = nil }
+            }
             cursor = end
         }
         return result
@@ -57,12 +49,11 @@ public enum ParagraphFormatting {
                 let fragment = NSRange(location: intersection.location - range.location, length: intersection.length)
                 output.enumerateAttributes(in: fragment) { attributes, run, _ in
                     if attributes[.aparteHeadingLevel] != nil {
-                        let font = NSFontManager.shared.convert(AparteTypography.bodyFont,
-                                                               toHaveTrait: AparteTypography.inlineTraits(in: attributes))
+                        let font = AparteTypography.font(headingLevel: nil,
+                                                         traits: AparteTypography.inlineTraits(in: attributes))
                         output.addAttribute(.font, value: font, range: run)
                     }
                 }
-                output.removeAttribute(.aparteListKind, range: fragment)
                 output.removeAttribute(.aparteHeadingLevel, range: fragment)
                 output.addAttribute(.aparteInlineOnly, value: true, range: fragment)
             }
@@ -98,11 +89,7 @@ public enum ParagraphFormatting {
             if !result.isEmpty {
                 result += previousWasList && block.marker != nil ? "\n" : "\n\n"
             }
-            let line = source.substring(with: block.range)
-            if let marker = block.marker, marker.prefix.isEmpty {
-                result += marker.kind == .unordered ? "• " : "\(marker.number ?? 1). "
-            }
-            result += line
+            result += source.substring(with: block.range)
             previousWasList = block.marker != nil
         }
         return result

@@ -30,9 +30,12 @@ public enum PasteNormalizer {
                 output.addAttribute(.font, value: font, range: range)
 
                 if sourceFont.pointSize >= 22 {
+                    // A pasted heading is bold by nature; only italic carries over inline.
                     let level = sourceFont.pointSize >= 28 ? 1 : 2
+                    let inline = traits.intersection(.italicFontMask)
                     output.addAttributes(
-                        [.font: AparteTypography.headingFont(level: level), .aparteHeadingLevel: level],
+                        [.font: AparteTypography.font(headingLevel: level, traits: inline),
+                         .aparteHeadingLevel: level, .aparteInlineBold: false],
                         range: range
                     )
                 }
@@ -47,11 +50,6 @@ public enum PasteNormalizer {
                     [.link: link, .foregroundColor: NSColor.linkColor, .underlineStyle: NSUnderlineStyle.single.rawValue],
                     range: range
                 )
-            }
-            if let paragraph = attributes[.paragraphStyle] as? NSParagraphStyle,
-               !paragraph.textLists.isEmpty {
-                let kind: AparteListKind = paragraph.textLists[0].isOrdered ? .ordered : .unordered
-                output.addAttribute(.aparteListKind, value: kind.rawValue, range: range)
             }
         }
         // Cocoa list markers end with a tab; some macOS versions also prepend one.
@@ -72,7 +70,6 @@ public enum PasteNormalizer {
                 let marker = kind == .ordered ? "\(ordinal)." : "•"
                 let prefixLength = nativeListPrefixLength(in: line, generatedMarker: list.marker(forItemNumber: ordinal), canonicalMarker: marker)
                 replacements.append((NSRange(location: cursor, length: prefixLength), marker + " "))
-                output.addAttribute(.aparteListKind, value: kind.rawValue, range: paragraph)
                 output.removeAttribute(.aparteHeadingLevel, range: paragraph)
             } else { previousList = nil }
             cursor = NSMaxRange(paragraph)
