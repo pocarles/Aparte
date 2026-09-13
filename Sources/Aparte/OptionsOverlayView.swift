@@ -144,7 +144,7 @@ final class OptionsOverlayView: NSView {
     }
 
     private func isExpandedByDefault(_ item: NSMenuItem) -> Bool {
-        item.title.trimmingCharacters(in: .whitespacesAndNewlines).localizedCaseInsensitiveCompare("Text size") == .orderedSame
+        item.title == "Text size"
     }
 
     var expandedGroupsForRuntimeCheck: [String] {

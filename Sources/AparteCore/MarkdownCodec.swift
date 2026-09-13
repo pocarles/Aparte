@@ -21,20 +21,16 @@ public enum MarkdownCodec {
                 let range = NSRange(location: 0, length: rendered.length)
                 rendered.enumerateAttribute(.font, in: range) { value, run, _ in
                     let traits = NSFontManager.shared.traits(of: value as? NSFont ?? AparteTypography.bodyFont)
-                    let font = NSFontManager.shared.convert(AparteTypography.headingFont(level: block.headingLevel), toHaveTrait: traits)
+                        .intersection([.boldFontMask, .italicFontMask])
+                    let font = AparteTypography.font(headingLevel: block.headingLevel, traits: traits)
                     rendered.addAttributes([.font: font, .aparteHeadingLevel: block.headingLevel,
                                             .aparteInlineBold: traits.contains(.boldFontMask)], range: run)
                 }
             }
 
-            if let listKind = block.listKind {
-                let marker = listKind == .unordered ? "• " : "\(block.listNumber). "
+            if let list = block.list {
+                let marker = list == .unordered ? "• " : "\(block.listNumber). "
                 rendered.insert(NSAttributedString(string: marker, attributes: AparteTypography.baseAttributes), at: 0)
-                rendered.addAttribute(
-                    .aparteListKind,
-                    value: listKind.rawValue,
-                    range: NSRange(location: 0, length: rendered.length)
-                )
             }
 
             output.append(rendered)
@@ -86,7 +82,7 @@ public enum MarkdownCodec {
     private static func parseBlock(_ line: String) -> (
         content: String,
         headingLevel: Int,
-        listKind: AparteListKind?,
+        list: AparteListKind?,
         listNumber: Int
     ) {
         if let match = line.firstMatch(of: /^(#{1,6})\s+(.*)$/) {

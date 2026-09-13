@@ -35,6 +35,12 @@ final class PadWindowController: NSObject, NSTextViewDelegate {
     var onDismiss: (() -> Void)?
 
     var isVisible: Bool { panel.isVisible }
+    var window: NSWindow { panel }
+
+    var shortcutHint: String? {
+        get { editor.placeholderHint }
+        set { editor.placeholderHint = newValue }
+    }
 
     init(document: DocumentController, defaults: UserDefaults = .standard,
          optionsMenu: @escaping () -> NSMenu = { MenuBarController.makeOptionsMenu(target: NSApp.delegate as? AppDelegate) }) {
@@ -78,6 +84,10 @@ final class PadWindowController: NSObject, NSTextViewDelegate {
         formattingBar.closeLinkPopover()
         closeOptions()
         formattingBar.isHidden = true
+        // Ordering the pad out while a sheet is attached would orphan the sheet.
+        if let sheet = panel.attachedSheet {
+            panel.endSheet(sheet, returnCode: .cancel)
+        }
         panel.orderOut(nil)
     }
 
@@ -214,6 +224,10 @@ final class PadWindowController: NSObject, NSTextViewDelegate {
     func zoomOut() { setZoom(zoom - 0.1) }
     func resetZoom() { setZoom(1) }
 
+    var canZoomIn: Bool { zoom < 1.8 - 0.001 }
+    var canZoomOut: Bool { zoom > 0.8 + 0.001 }
+    var isDefaultZoom: Bool { abs(zoom - 1) < 0.001 }
+
     private func setZoom(_ value: CGFloat) {
         zoom = min(1.8, max(0.8, value))
         guard let scrollView = editor.enclosingScrollView else { return }
@@ -223,7 +237,7 @@ final class PadWindowController: NSObject, NSTextViewDelegate {
         layoutZoomedEditor()
         editor.scrollRangeToVisible(editor.selectedRange())
         defaults.set(Double(zoom), forKey: "textZoom")
-        formattingBar.isHidden = true
+        updateFormattingBar()
     }
 
     private func layoutZoomedEditor() {
@@ -301,7 +315,6 @@ final class PadWindowController: NSObject, NSTextViewDelegate {
         panel.makeFirstResponder(editor)
         guard !document.markdown.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             saveButton?.acknowledge("Empty", symbol: "exclamationmark.circle", detail: "The pad is empty. Nothing was saved.")
-            NSSound.beep()
             return
         }
 
@@ -310,15 +323,21 @@ final class PadWindowController: NSObject, NSTextViewDelegate {
         savePanel.nameFieldStringValue = "\(MarkdownFileExporter.suggestedBaseName(for: document.markdown)).md"
         savePanel.allowedContentTypes = [.markdown]
         savePanel.canCreateDirectories = true
-        defer { panel.makeFirstResponder(editor) }
-        guard savePanel.runModal() == .OK, let destination = savePanel.url else { return }
-
-        do {
-            try document.markdown.write(to: destination, atomically: true, encoding: .utf8)
-            saveButton?.acknowledge("Saved", symbol: "checkmark", detail: "Saved \(destination.lastPathComponent)")
-        } catch {
-            saveButton?.acknowledge("Failed", symbol: "exclamationmark.circle", detail: error.localizedDescription)
-            NSSound.beep()
+        // The pad sits above the modal panel level, so a modal Save panel can open
+        // behind it. A sheet stays attached to the pad instead.
+        savePanel.beginSheetModal(for: panel) { [weak self] response in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                defer { self.panel.makeFirstResponder(self.editor) }
+                guard response == .OK, let destination = savePanel.url else { return }
+                do {
+                    try self.document.markdown.write(to: destination, atomically: true, encoding: .utf8)
+                    self.saveButton?.acknowledge("Saved", symbol: "checkmark", detail: "Saved \(destination.lastPathComponent)")
+                } catch {
+                    self.saveButton?.acknowledge("Failed", symbol: "exclamationmark.circle", detail: error.localizedDescription)
+                    NSSound.beep()
+                }
+            }
         }
     }
 

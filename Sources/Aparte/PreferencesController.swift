@@ -53,6 +53,7 @@ final class PreferencesController: NSObject, NSWindowDelegate {
 
     var onShortcutChanged: ((HotKeyController.Shortcut) -> Void)?
     var onLaunchAtLoginStateChanged: ((LaunchAtLoginState) -> Void)?
+    var onUserClose: (() -> Void)?
 
     init(
         hotKeyController: HotKeyController?,
@@ -231,7 +232,7 @@ final class PreferencesController: NSObject, NSWindowDelegate {
         defer { fitWindowToContent() }
         shortcutButton?.title = hotKeyController?.shortcutDescription ?? "Unavailable"
         shortcutButton?.isEnabled = hotKeyController != nil
-        resetButton?.isEnabled = hotKeyController != nil
+        resetButton?.isEnabled = hotKeyController != nil && hotKeyController?.currentShortcut != HotKeyController.defaultShortcut
         if let failure = hotKeyController?.startupRegistrationFailure {
             showShortcutError("This shortcut is unavailable. \(failure.localizedDescription)")
         } else {
@@ -329,7 +330,9 @@ final class PreferencesController: NSObject, NSWindowDelegate {
             stopRecording()
             refreshShortcut()
         } else {
-            closeSettings()
+            // Escape closes the window the same way its close button does, so
+            // the app hands focus back to the app the user came from.
+            window?.performClose(nil)
         }
     }
 
@@ -369,6 +372,13 @@ final class PreferencesController: NSObject, NSWindowDelegate {
     }
 
     func windowWillClose(_ notification: Notification) { stopRecording() }
+
+    // Aparte is an accessory app with no other window, so a close the user asked
+    // for must return focus to whatever they were using before Settings.
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        onUserClose?()
+        return true
+    }
 
     private static func state(for status: SMAppService.Status) -> LaunchAtLoginState {
         switch status {

@@ -5,7 +5,8 @@ import AparteCore
 final class DocumentController {
     private let store: PersistenceStore
     private var saveWorkItem: DispatchWorkItem?
-    private(set) var attributedText: NSMutableAttributedString
+    /// The live editor storage, not a copy: nothing is duplicated per keystroke.
+    private(set) var attributedText: NSAttributedString
     private(set) var lastSaveError: Error?
 
     var markdown: String {
@@ -19,16 +20,11 @@ final class DocumentController {
     init(store: PersistenceStore? = nil) throws {
         self.store = try store ?? PersistenceStore()
         let saved = try self.store.load()
-        self.attributedText = NSMutableAttributedString(attributedString: MarkdownCodec.render(saved))
-    }
-
-    func replace(with attributedString: NSAttributedString) {
-        attributedText = NSMutableAttributedString(attributedString: attributedString)
-        scheduleSave()
+        self.attributedText = MarkdownCodec.render(saved)
     }
 
     func textDidChange(_ attributedString: NSAttributedString) {
-        attributedText = NSMutableAttributedString(attributedString: attributedString)
+        attributedText = attributedString
         scheduleSave()
     }
 

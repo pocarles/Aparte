@@ -2,6 +2,23 @@
 
 All notable changes appear here. The project follows semantic versioning.
 
+## Unreleased
+
+- Bold, italic, underline, heading, list, and link are undoable. One Command-Z restores the previous text and its formatting.
+- Bold, italic, and underline work without a selection: they change what you type next, like every other Mac editor.
+- Heading and the list commands toggle. Running one again returns the lines to body text, and menu items show a checkmark for the formatting at the cursor.
+- Backspace right after a bullet or number removes the whole marker.
+- Deleting a marker by hand ends the list item. Exported Markdown and copied text no longer show a bullet the pad does not display.
+- Bold inside a heading is visible and round-trips through Markdown as `# **word**`.
+- Cut writes the same normalized text and HTML as copy, without Aparte's fonts.
+- Pasting a large italic title keeps the italic inside the resulting heading.
+- Save opens as a sheet on the pad instead of a panel that could appear behind it.
+- The first launch, and reopening Aparte from Finder or Launchpad while it runs, shows the pad.
+- Closing Settings returns you to the app you were using before.
+- The shortcut name follows your keyboard layout, so a non-US layout shows the key you actually press.
+- Changing the text size keeps the formatting bar in place, and the text size options grey out at their limits.
+- The empty pad shows your shortcut, so a new install says how to open and close Aparte.
+
 ## 1.4.0 - 2026-09-11
 
 - Settings… opens a native window for the global keyboard shortcut, launch at login, and update checks in direct-download builds. Command-comma opens the same window from the pad.

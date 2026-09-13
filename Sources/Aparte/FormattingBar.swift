@@ -181,6 +181,9 @@ final class FormattingBar: NSVisualEffectView, NSPopoverDelegate {
     }
 
     func popoverDidClose(_ notification: Notification) {
+        // Reopening the link editor while the previous popover is still closing
+        // must not clear the new popover's selection.
+        guard (notification.object as? NSPopover) === linkPopover else { return }
         linkPopover = nil
         linkSelection = nil
     }

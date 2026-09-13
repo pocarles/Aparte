@@ -33,7 +33,6 @@ final class PasteNormalizerTests: XCTestCase {
                     XCTAssertEqual((line as NSString).substring(from: length), "One\tinside\t")
                     let plain = PasteNormalizer.normalized(NSAttributedString(string: line))
                     XCTAssertEqual(plain.string, line)
-                    XCTAssertNil(plain.attribute(.aparteListKind, at: 0, effectiveRange: nil))
                 }
             }
             for line in ["8.\tOne", "\t8.\tOne", "77.\tOne", "7.x\tOne", "\t7.x\tOne", "7. One", "•x\tOne", "\tuser\ttabs"] {
@@ -56,14 +55,8 @@ final class PasteNormalizerTests: XCTestCase {
                 XCTAssertEqual(result.string, expected)
                 XCTAssertEqual(ParagraphFormatting.plainText(from: result), expected)
                 XCTAssertEqual(MarkdownCodec.markdown(from: result), ordered ? expected : "- One\tinside\n- Two\ttail")
-                let kind = ordered ? AparteListKind.ordered : .unordered
-                for word in ["One", "Two"] {
-                    let index = (result.string as NSString).range(of: word).location
-                    XCTAssertEqual(result.attribute(.aparteListKind, at: index, effectiveRange: nil) as? String, kind.rawValue)
-                }
                 let plain = PasteNormalizer.normalized(NSAttributedString(string: source))
                 XCTAssertEqual(plain.string, source)
-                XCTAssertNil(plain.attribute(.aparteListKind, at: 0, effectiveRange: nil))
             }
         }
     }
@@ -142,6 +135,13 @@ final class PasteNormalizerTests: XCTestCase {
         XCTAssertEqual(normalized.attribute(.aparteHeadingLevel, at: 0, effectiveRange: nil) as? Int, 1)
         XCTAssertEqual(normalized.attribute(.underlineStyle, at: 0, effectiveRange: nil) as? Int, NSUnderlineStyle.single.rawValue)
         XCTAssertEqual(normalized.attribute(.link, at: 10, effectiveRange: nil) as? URL, URL(string: "https://example.com"))
+    }
+
+    func testRichHeadingPasteKeepsItalicButNotStructuralBold() {
+        let italicTitle = NSFontManager.shared.convert(NSFont.systemFont(ofSize: 30, weight: .bold), toHaveTrait: .italicFontMask)
+        let normalized = PasteNormalizer.normalized(NSAttributedString(string: "Title", attributes: [.font: italicTitle]))
+        XCTAssertEqual(normalized.attribute(.aparteHeadingLevel, at: 0, effectiveRange: nil) as? Int, 1)
+        XCTAssertEqual(MarkdownCodec.markdown(from: normalized), "# *Title*")
     }
 
     func testPlainPasteUsesAparteBodyTypography() {

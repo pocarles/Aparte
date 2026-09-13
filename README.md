@@ -83,6 +83,13 @@ Shortcuts work while writing and while the options card is open.
 | About Aparte | Command-Control-A |
 | Quit Aparte | Command-Q |
 
+Bold, italic, and underline apply to the selection, or to what you type next when
+nothing is selected. Heading and the two list commands toggle: running one on text
+that already has that heading level or list marker returns the lines to body text.
+The menu shows a checkmark on whichever of them applies where the cursor is.
+Pressing Backspace right after a bullet or number removes the whole marker, and the
+line stops being a list item.
+
 Only show/hide is global. The other shortcuts apply while working in Aparte.
 Unavailable actions stay disabled. Clear keeps a recovery copy, and discarding
 that copy still asks for confirmation.
@@ -96,6 +103,9 @@ open in a small card inside the pad. Choose an option, click outside the card, o
 press Escape to close it and return to your writing. The
 counter starts hidden. It counts the selected passage when you select text,
 otherwise the whole pad. Characters include spaces and line breaks.
+
+An empty pad shows your shortcut below the writing prompt, and opening Aparte from Finder or
+Launchpad while it is already running shows the pad.
 
 Copy at the bottom copies the whole pad without moving your cursor. The three-dot
 menu offers plain text or Markdown; these use your selection when there is one,

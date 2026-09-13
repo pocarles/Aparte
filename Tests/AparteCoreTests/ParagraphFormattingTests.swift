@@ -41,23 +41,17 @@ final class ParagraphFormattingTests: XCTestCase {
         XCTAssertFalse(html.contains("<draft>"))
     }
 
-    func testNativeListWithoutVisibleMarkerGetsReadablePlainText() {
-        let source = NSAttributedString(string: "One\nTwo", attributes: [.aparteListKind: AparteListKind.unordered.rawValue])
-        XCTAssertEqual(ParagraphFormatting.plainText(from: source), "• One\n• Two")
-        XCTAssertTrue(ParagraphFormatting.html(from: source).contains("<ul><li>One</li><li>Two</li></ul>"))
+    func testDeletedMarkerLeavesPlainBodyText() {
+        let text = NSAttributedString(string: "Item", attributes: [.paragraphStyle: AparteTypography.listParagraphStyle])
+        XCTAssertEqual(ParagraphFormatting.plainText(from: text), "Item")
+        XCTAssertEqual(MarkdownCodec.markdown(from: text), "Item")
+        XCTAssertTrue(ParagraphFormatting.html(from: text).contains("<p>Item</p>"))
     }
 
     func testEmptyClipboardContent() {
         let source = NSAttributedString(string: "\n\n")
         XCTAssertEqual(ParagraphFormatting.plainText(from: source), "")
         XCTAssertFalse(ParagraphFormatting.html(from: source).contains("<p>"))
-    }
-
-    func testAttributeOnlyOrderedItemsShareResolvedNumbers() {
-        let text = NSAttributedString(string: "7. One\nTwo\nThree", attributes: [.aparteListKind: AparteListKind.ordered.rawValue])
-        XCTAssertEqual(ParagraphFormatting.plainText(from: text), "7. One\n8. Two\n9. Three")
-        XCTAssertEqual(MarkdownCodec.markdown(from: text), "7. One\n8. Two\n9. Three")
-        XCTAssertTrue(ParagraphFormatting.html(from: text).contains("<ol start=\"7\"><li value=\"7\">One</li><li value=\"8\">Two</li><li value=\"9\">Three</li></ol>"))
     }
 
     func testCopyFragmentsLoseBlockMeaningButWholeParagraphsKeepIt() {

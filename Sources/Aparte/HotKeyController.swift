@@ -127,11 +127,6 @@ final class HotKeyController {
             return
         }
 
-        let savedShortcut = Self.loadShortcut(from: defaults)
-        if let savedShortcut {
-            currentShortcut = savedShortcut
-        }
-
         switch register(shortcut: currentShortcut) {
         case let .success(reference):
             hotKey = reference
@@ -253,10 +248,10 @@ final class HotKeyController {
 
     static func displayName(for shortcut: Shortcut) -> String {
         var result = ""
-        if shortcut.modifiers & UInt32(cmdKey) != 0 { result += "⌘" }
         if shortcut.modifiers & UInt32(controlKey) != 0 { result += "⌃" }
         if shortcut.modifiers & UInt32(optionKey) != 0 { result += "⌥" }
         if shortcut.modifiers & UInt32(shiftKey) != 0 { result += "⇧" }
+        if shortcut.modifiers & UInt32(cmdKey) != 0 { result += "⌘" }
         result += keyName(for: shortcut.keyCode)
         return result
     }
@@ -342,44 +337,46 @@ final class HotKeyController {
         case UInt32(kVK_F10): return "F10"
         case UInt32(kVK_F11): return "F11"
         case UInt32(kVK_F12): return "F12"
-        case 0: return "A"
-        case 1: return "S"
-        case 2: return "D"
-        case 3: return "F"
-        case 4: return "H"
-        case 5: return "G"
-        case 6: return "Z"
-        case 7: return "X"
-        case 8: return "C"
-        case 9: return "V"
-        case 11: return "B"
-        case 12: return "Q"
-        case 13: return "W"
-        case 14: return "E"
-        case 15: return "R"
-        case 16: return "Y"
-        case 17: return "T"
-        case 18: return "1"
-        case 19: return "2"
-        case 20: return "3"
-        case 21: return "4"
-        case 22: return "6"
-        case 23: return "5"
-        case 25: return "9"
-        case 26: return "7"
-        case 28: return "8"
-        case 29: return "0"
-        case 31: return "O"
-        case 32: return "U"
-        case 34: return "I"
-        case 35: return "P"
-        case 37: return "L"
-        case 38: return "J"
-        case 40: return "K"
-        case 45: return "N"
-        case 46: return "M"
-        default: return "Key \(keyCode)"
+        default:
+            // Letter and digit key codes name different characters on each
+            // keyboard layout. Ask the layout what this key produces.
+            return translatedKeyName(for: keyCode) ?? "Key \(keyCode)"
         }
+    }
+
+    private static func translatedKeyName(for keyCode: UInt32) -> String? {
+        guard let virtualKey = UInt16(exactly: keyCode),
+              let source = TISCopyCurrentKeyboardLayoutInputSource()?.takeRetainedValue(),
+              let layoutPointer = TISGetInputSourceProperty(source, kTISPropertyUnicodeKeyLayoutData)
+        else { return nil }
+        let layoutData = Unmanaged<CFData>.fromOpaque(layoutPointer).takeUnretainedValue() as Data
+        var deadKeyState: UInt32 = 0
+        var length = 0
+        var characters = [UniChar](repeating: 0, count: 8)
+        let status = layoutData.withUnsafeBytes { raw -> OSStatus in
+            guard let layout = raw.baseAddress?.assumingMemoryBound(to: UCKeyboardLayout.self) else {
+                return OSStatus(paramErr)
+            }
+            return UCKeyTranslate(
+                layout,
+                virtualKey,
+                UInt16(kUCKeyActionDisplay),
+                0,
+                UInt32(LMGetKbdType()),
+                OptionBits(kUCKeyTranslateNoDeadKeysBit),
+                &deadKeyState,
+                characters.count,
+                &length,
+                &characters
+            )
+        }
+        guard status == noErr, length > 0 else { return nil }
+        let name = String(utf16CodeUnits: characters, count: length)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty,
+              name.unicodeScalars.allSatisfy({ !CharacterSet.controlCharacters.contains($0) })
+        else { return nil }
+        return name.uppercased()
     }
 
     private static let modifierOnlyOrEscapeKeyCodes: Set<UInt32> = [
