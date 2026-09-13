@@ -2,7 +2,7 @@ import AppKit
 
 @MainActor
 final class FocusOverlayController {
-    private static let dimmingAlpha: CGFloat = 0.30
+    private static let dimmingAlpha: CGFloat = 0.60
     private var windows: [NSWindow] = []
 
     var runtimeWindowCount: Int { windows.count }
