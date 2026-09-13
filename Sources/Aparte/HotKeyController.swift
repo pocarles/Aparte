@@ -4,7 +4,7 @@ import Foundation
 
 @MainActor
 final class HotKeyController {
-    struct Shortcut: Codable, Equatable, Sendable {
+    struct Shortcut: Codable, Hashable, Sendable {
         let keyCode: UInt32
         let modifiers: UInt32
 
@@ -16,12 +16,17 @@ final class HotKeyController {
 
     enum ShortcutError: LocalizedError, Equatable {
         case invalidShortcut
+        case reservedShortcut(Shortcut)
         case registrationFailed(OSStatus)
 
         var errorDescription: String? {
             switch self {
             case .invalidShortcut:
                 return "Choose a key with Command, Control, or Option."
+            case let .reservedShortcut(shortcut):
+                // Errors are created and shown on the main actor by the recorder.
+                let name = MainActor.assumeIsolated { HotKeyController.displayName(for: shortcut) }
+                return "\(name) belongs to every app. Choose another shortcut."
             case let .registrationFailed(status):
                 if status == eventHotKeyExistsErr {
                     return "That shortcut is already reserved by another app."
@@ -151,6 +156,9 @@ final class HotKeyController {
         guard Self.isValid(shortcut) else {
             return .failure(.invalidShortcut)
         }
+        guard !Self.isReserved(shortcut) else {
+            return .failure(.reservedShortcut(shortcut))
+        }
 
         if activeShortcut == shortcut {
             persist(shortcut)
@@ -218,6 +226,12 @@ final class HotKeyController {
         guard !modifierOnlyOrEscapeKeyCodes.contains(shortcut.keyCode) else { return false }
         guard shortcut.modifiers & requiredModifiers != 0 else { return false }
         return shortcut.modifiers & ~allowedModifiers == 0
+    }
+
+    /// System-wide chords every app relies on. Taking one would break it everywhere
+    /// until the user changed it back, so the recorder refuses them.
+    static func isReserved(_ shortcut: Shortcut) -> Bool {
+        reservedShortcuts.contains(shortcut)
     }
 
     static func shortcut(
@@ -301,7 +315,7 @@ final class HotKeyController {
         }
 
         let shortcut = Shortcut(keyCode: keyCode, modifiers: modifiers)
-        guard isValid(shortcut) else {
+        guard isValid(shortcut), !isReserved(shortcut) else {
             defaults.removeObject(forKey: keyCodeDefaultsKey)
             defaults.removeObject(forKey: modifiersDefaultsKey)
             return nil
@@ -379,6 +393,17 @@ final class HotKeyController {
         return name.uppercased()
     }
 
+    private static let reservedShortcuts: Set<Shortcut> = {
+        let command = UInt32(cmdKey)
+        let commandShift = UInt32(cmdKey | shiftKey)
+        // Quit, close, select all, cut/copy/paste, undo/redo, hide, minimize, app switching, Spotlight.
+        let commandKeys: [Int] = [kVK_ANSI_Q, kVK_ANSI_W, kVK_ANSI_A, kVK_ANSI_X, kVK_ANSI_C, kVK_ANSI_V,
+                                  kVK_ANSI_Z, kVK_ANSI_H, kVK_ANSI_M, kVK_Tab, kVK_Space]
+        let commandShiftKeys: [Int] = [kVK_ANSI_Q, kVK_ANSI_Z, kVK_Tab]
+        return Set(commandKeys.map { Shortcut(keyCode: UInt32($0), modifiers: command) }
+                   + commandShiftKeys.map { Shortcut(keyCode: UInt32($0), modifiers: commandShift) })
+    }()
+
     private static let modifierOnlyOrEscapeKeyCodes: Set<UInt32> = [
         53, // Escape
         54, 55, 56, 57, 58, 59, 60, 61, 62, 63 // modifier and Fn keys
@@ -393,7 +418,7 @@ final class HotKeyController {
 private extension HotKeyController.ShortcutError {
     var statusCode: OSStatus {
         switch self {
-        case .invalidShortcut:
+        case .invalidShortcut, .reservedShortcut:
             return OSStatus(eventHotKeyInvalidErr)
         case let .registrationFailed(status):
             return status

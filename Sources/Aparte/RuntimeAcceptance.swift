@@ -162,6 +162,13 @@ enum RuntimeAcceptance {
                 if case .failure = hotKey.updateShortcut(invalid) {
                     check(hotKey.activeShortcut == candidate, "invalid-shortcut-preserves-active-choice")
                 } else { failed.append("invalid-shortcut-preserves-active-choice") }
+                let systemChord = HotKeyController.Shortcut(keyCode: UInt32(kVK_ANSI_Q), modifiers: UInt32(cmdKey))
+                if case let .failure(error) = hotKey.updateShortcut(systemChord) {
+                    check(error == .reservedShortcut(systemChord) && hotKey.activeShortcut == candidate
+                          && error.localizedDescription.hasPrefix("⌘Q"), "system-chord-is-refused")
+                } else { failed.append("system-chord-is-refused") }
+                check(!HotKeyController.isReserved(HotKeyController.defaultShortcut)
+                      && !HotKeyController.isReserved(candidate), "ordinary-chords-are-not-reserved")
                 var reserved: EventHotKeyRef?
                 let reservedKey = HotKeyController.Shortcut(keyCode: UInt32(kVK_ANSI_K), modifiers: candidate.modifiers)
                 let reservedStatus = RegisterEventHotKey(reservedKey.keyCode, reservedKey.modifiers, EventHotKeyID(signature: 0x54535431, id: 42), GetApplicationEventTarget(), UInt32(kEventHotKeyExclusive), &reserved)
