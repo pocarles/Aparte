@@ -4,6 +4,7 @@ All notable changes appear here. The project follows semantic versioning.
 
 ## Unreleased
 
+- The shortcut recorder refuses system-wide chords such as Command-Q, Command-C, Command-Tab, and Command-Space, which would otherwise stop working in every app.
 - The rest of the screen dims more strongly while the pad is open.
 - Bold, italic, underline, heading, list, and link are undoable. One Command-Z restores the previous text and its formatting.
 - Bold, italic, and underline work without a selection: they change what you type next, like every other Mac editor.
