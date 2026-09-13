@@ -11,8 +11,8 @@ local document is waiting when you come back.
 [Download the latest release](https://github.com/pocarles/Aparte/releases/latest/download/Aparte.dmg)
 or read the [product page](https://pocarles.com/aparte/).
 
-Version 1.4.0 adds a native Settings window for the keyboard shortcut, launch at login, and update checks. Direct-download builds check for signed updates daily. Your writing stays on your Mac.
-Read the [release notes](https://github.com/pocarles/Aparte/releases/tag/v1.4.0).
+Version 1.5.0 makes every formatting command undoable, lets bold, italic, and underline apply to what you type next, turns heading and list commands into toggles, and opens Save as a sheet on the pad. The shortcut recorder refuses system-wide chords, and the screen dims more while you write. Your writing stays on your Mac.
+Read the [release notes](https://github.com/pocarles/Aparte/releases/tag/v1.5.0).
 
 ## What it does
 

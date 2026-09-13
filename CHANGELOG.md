@@ -2,7 +2,7 @@
 
 All notable changes appear here. The project follows semantic versioning.
 
-## Unreleased
+## 1.5.0 - 2026-09-13
 
 - The shortcut recorder refuses system-wide chords such as Command-Q, Command-C, Command-Tab, and Command-Space, which would otherwise stop working in every app.
 - The rest of the screen dims more strongly while the pad is open.
