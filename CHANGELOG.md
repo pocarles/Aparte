@@ -4,6 +4,7 @@ All notable changes appear here. The project follows semantic versioning.
 
 ## Unreleased
 
+- The rest of the screen dims more strongly while the pad is open.
 - Bold, italic, underline, heading, list, and link are undoable. One Command-Z restores the previous text and its formatting.
 - Bold, italic, and underline work without a selection: they change what you type next, like every other Mac editor.
 - Heading and the list commands toggle. Running one again returns the lines to body text, and menu items show a checkmark for the formatting at the cursor.
