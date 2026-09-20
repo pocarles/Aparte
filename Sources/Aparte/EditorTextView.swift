@@ -313,17 +313,10 @@ final class EditorTextView: NSTextView {
 
             if let marker { text.deleteCharacters(in: NSRange(location: 0, length: marker.utf16Length)) }
             let range = NSRange(location: 0, length: text.length)
-            var updates: [(NSRange, [NSAttributedString.Key: Any])] = []
-            text.enumerateAttributes(in: range) { attributes, run, _ in
-                var updated = attributes
-                let traits = AparteTypography.inlineTraits(in: attributes)
-                updated.removeValue(forKey: .aparteInlineOnly)
-                updated[.aparteHeadingLevel] = level
-                AparteTypography.applyInlineTraits(traits, to: &updated)
-                updated[.paragraphStyle] = AparteTypography.bodyParagraphStyle
-                updates.append((run, updated))
+            if range.length > 0 {
+                AparteTypography.applyHeadingTypography(level: level, to: text, range: range)
+                text.addAttribute(.paragraphStyle, value: AparteTypography.bodyParagraphStyle, range: range)
             }
-            for (run, attributes) in updates { text.setAttributes(attributes, range: run) }
             return (text, 0)
         }
     }
@@ -493,8 +486,33 @@ final class EditorTextView: NSTextView {
                 textStorage.removeAttribute(.aparteInlineBold, range: runRange)
             }
         }
+        if trait.contains(.boldFontMask) {
+            collapseWholeHeadingBold(in: range)
+        }
         textStorage.endEditing()
         didChangeText()
+    }
+
+    /// Whole-heading bold is the heading face, not contrast. After a bold
+    /// toggle, drop it so the line stays semibold.
+    private func collapseWholeHeadingBold(in edited: NSRange) {
+        guard let textStorage, textStorage.length > 0 else { return }
+        let source = textStorage.string as NSString
+        var cursor = edited.location
+        let limit = min(NSMaxRange(edited), source.length)
+        while cursor < limit {
+            guard let paragraph = paragraphRange(for: NSRange(location: cursor, length: 0)),
+                  paragraph.length > 0 else { break }
+            let content = contentRange(of: paragraph, in: source)
+            if content.length > 0,
+               let level = textStorage.attribute(.aparteHeadingLevel, at: content.location, effectiveRange: nil) as? Int,
+               AparteTypography.inlineBoldCovers(textStorage, range: content) {
+                AparteTypography.applyHeadingTypography(level: level, to: textStorage, range: content)
+            }
+            let next = NSMaxRange(paragraph)
+            if next <= cursor { break }
+            cursor = next
+        }
     }
 
     /// One transform for runs and for typing attributes, so a caret toggle and a

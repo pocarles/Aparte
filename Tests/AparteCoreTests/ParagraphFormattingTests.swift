@@ -44,6 +44,8 @@ final class ParagraphFormattingTests: XCTestCase {
     func testStructuralSpacingAgreesWithTheDocument() {
         let rendered = MarkdownCodec.render("# Title\n\nFirst\n\n- One\n- Two\n\nAfter\n\n10. Ten\n11. Eleven")
         assertSpacingMatchesReload(rendered)
+        assertSpacingMatchesReload(MarkdownCodec.render("Intro\n\n# After paragraph\n\nBody"))
+        assertSpacingMatchesReload(MarkdownCodec.render("- One\n- Two\n\n# After list\n\nBody"))
 
         let storage = NSMutableAttributedString(string: "Hello", attributes: AparteTypography.baseAttributes)
         func type(_ text: String) {
@@ -59,6 +61,18 @@ final class ParagraphFormattingTests: XCTestCase {
         storage.addAttribute(.aparteHeadingLevel, value: 1, range: (storage.string as NSString).range(of: "Title"))
         ParagraphFormatting.applyStructuralSpacing(to: storage)
         assertSpacingMatchesReload(storage)
+
+        let live = NSMutableAttributedString(
+            string: "Intro\nHeadingA\n- One\n- Two\nHeadingB\nBody",
+            attributes: AparteTypography.baseAttributes
+        )
+        let liveSource = live.string as NSString
+        live.addAttribute(.aparteHeadingLevel, value: 1, range: liveSource.range(of: "HeadingA"))
+        live.addAttribute(.aparteHeadingLevel, value: 1, range: liveSource.range(of: "HeadingB"))
+        ParagraphFormatting.applyStructuralSpacing(to: live)
+        XCTAssertEqual(spacing(live, at: liveSource.range(of: "Intro").location), AparteTypography.headingSpacing)
+        XCTAssertEqual(spacing(live, at: liveSource.range(of: "Two").location), AparteTypography.headingSpacing)
+        assertSpacingMatchesReload(live)
     }
 
     func testHeadingIsFollowedByTwiceTheBodyGap() {
@@ -71,9 +85,36 @@ final class ParagraphFormattingTests: XCTestCase {
             let hashes = String(repeating: "#", count: level)
             let last = MarkdownCodec.render("Intro\n\n\(hashes) End")
             let end = (last.string as NSString).range(of: "End")
-            XCTAssertEqual(spacing(last, at: 0), AparteTypography.paragraphSpacing)
+            XCTAssertEqual(spacing(last, at: 0), AparteTypography.headingSpacing)
             XCTAssertEqual(spacing(last, at: end.location), AparteTypography.headingSpacing)
         }
+    }
+
+    func testBlockBeforeAHeadingTakesTheHeadingGap() {
+        let afterParagraph = MarkdownCodec.render("Intro\n\n# Title\n\nBody")
+        let prose = afterParagraph.string as NSString
+        XCTAssertEqual(spacing(afterParagraph, at: prose.range(of: "Intro").location), AparteTypography.headingSpacing)
+        XCTAssertEqual(spacing(afterParagraph, at: prose.range(of: "Title").location), AparteTypography.headingSpacing)
+        XCTAssertEqual(spacing(afterParagraph, at: prose.range(of: "Body").location), AparteTypography.paragraphSpacing)
+
+        let afterList = MarkdownCodec.render("- One\n- Two\n\n# Title")
+        let listed = afterList.string as NSString
+        XCTAssertEqual(spacing(afterList, at: listed.range(of: "One").location), AparteTypography.listItemSpacing)
+        XCTAssertEqual(spacing(afterList, at: listed.range(of: "Two").location), AparteTypography.headingSpacing)
+        XCTAssertEqual(spacing(afterList, at: listed.range(of: "Title").location), AparteTypography.headingSpacing)
+
+        let atStart = MarkdownCodec.render("# Title\n\nBody")
+        XCTAssertEqual(spacing(atStart, at: 0), AparteTypography.headingSpacing)
+        XCTAssertEqual(spacing(atStart, at: (atStart.string as NSString).range(of: "Body").location), AparteTypography.paragraphSpacing)
+
+        let liveList = NSMutableAttributedString(
+            string: "- One\nTitle",
+            attributes: AparteTypography.baseAttributes
+        )
+        liveList.addAttribute(.aparteHeadingLevel, value: 1, range: (liveList.string as NSString).range(of: "Title"))
+        ParagraphFormatting.applyStructuralSpacing(to: liveList)
+        XCTAssertEqual(spacing(liveList, at: 0), AparteTypography.headingSpacing)
+        assertSpacingMatchesReload(liveList)
     }
 
     func testHandTypedMarkerIsSpacedAsAListItem() {
@@ -247,11 +288,15 @@ final class ParagraphFormattingTests: XCTestCase {
     }
 
     func testPartialHeadingsRetainOnlyExplicitInlineTraits() {
-        for (markdown, expected) in [("# *world*", "*wor*"), ("# **world**", "**wor**"), ("# ***world***", "***wor***")] {
+        for (markdown, expected, canonical) in [
+            ("# *world*", "*wor*", "# *world*"),
+            ("# **world**", "wor", "# world"),
+            ("# ***world***", "*wor*", "# *world*"),
+        ] {
             let heading = MarkdownCodec.render(markdown)
             let fragment = ParagraphFormatting.copyText(from: heading, range: NSRange(location: 0, length: 3))
             XCTAssertEqual(MarkdownCodec.markdown(from: fragment), expected)
-            XCTAssertEqual(MarkdownCodec.markdown(from: heading), markdown)
+            XCTAssertEqual(MarkdownCodec.markdown(from: heading), canonical)
         }
         let ambiguous = NSAttributedString(string: "world", attributes: [.font: AparteTypography.headingFont(level: 1), .aparteHeadingLevel: 1])
         let fragment = ParagraphFormatting.copyText(from: ambiguous, range: NSRange(location: 0, length: 3))
