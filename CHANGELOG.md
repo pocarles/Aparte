@@ -5,6 +5,7 @@ All notable changes appear here. The project follows semantic versioning.
 ## Unreleased
 
 - Paragraph spacing comes from the document's structure, so the gap after a list is the same while typing and after the pad reloads.
+- A heading is followed by twice the usual paragraph gap, so a titled note breathes.
 - A list typed by hand ("- item") is spaced as a list. Wrapped list lines align under the item's text.
 - The text column stays about 620 points wide on a wide window instead of stretching with it.
 - Shift-Return inserts a line break inside the paragraph. Bold, italic, underline, and links that cross it stay intact when the pad reloads.

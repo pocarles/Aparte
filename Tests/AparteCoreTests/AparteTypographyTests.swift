@@ -33,6 +33,8 @@ final class AparteTypographyTests: XCTestCase {
     func testParagraphSpacingIsStructural() {
         XCTAssertEqual(AparteTypography.paragraphSpacing, 18)
         XCTAssertEqual(AparteTypography.listItemSpacing, 5)
+        XCTAssertEqual(AparteTypography.headingSpacing, AparteTypography.paragraphSpacing * 2)
+        XCTAssertEqual(AparteTypography.headingSpacing, 36)
         XCTAssertEqual(AparteTypography.bodyParagraphStyle.paragraphSpacing, 18)
         XCTAssertEqual(AparteTypography.bodyParagraphStyle.lineSpacing, 5)
         XCTAssertEqual(AparteTypography.listParagraphStyle.paragraphSpacing, 5)

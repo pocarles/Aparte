@@ -40,11 +40,13 @@ public enum ParagraphFormatting {
     }
 
     /// Spacing follows structure. A list item keeps the tight gap only while the
-    /// next paragraph continues the same list. A different kind, or no list at
-    /// all, is a new block and takes the body gap.
+    /// next paragraph continues the same list. A heading takes twice the body
+    /// gap. Anything else takes the body gap.
     static func paragraphStyle(for block: Block, next: Block?) -> NSParagraphStyle {
         let continuesList = block.marker != nil && block.marker?.kind == next?.marker?.kind
-        let spacing = continuesList ? AparteTypography.listItemSpacing : AparteTypography.paragraphSpacing
+        let spacing = continuesList
+            ? AparteTypography.listItemSpacing
+            : block.headingLevel > 0 ? AparteTypography.headingSpacing : AparteTypography.paragraphSpacing
         let indent = block.marker.map { AparteTypography.markerIndent(for: $0.prefix) } ?? 0
         return AparteTypography.paragraphStyle(spacing: spacing, headIndent: indent)
     }

@@ -72,11 +72,13 @@ public enum AparteTypography {
         }
     }
 
-    /// Gap after a paragraph, and after the last item of a list. Item-to-item
-    /// gaps use `listItemSpacing` instead; which one applies is decided from
-    /// the document, not stored on the paragraph when it is typed.
+    /// Gap after a paragraph, and after the last item of a list. Headings use
+    /// `headingSpacing`. Item-to-item gaps use `listItemSpacing`. Which one
+    /// applies is decided from the document, not stored on the paragraph when
+    /// it is typed.
     public static let paragraphSpacing: CGFloat = 18
     public static let listItemSpacing: CGFloat = 5
+    public static let headingSpacing: CGFloat = paragraphSpacing * 2
 
     public static var bodyParagraphStyle: NSParagraphStyle {
         paragraphStyle(spacing: paragraphSpacing, headIndent: 0)

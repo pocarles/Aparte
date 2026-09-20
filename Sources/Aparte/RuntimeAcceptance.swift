@@ -698,6 +698,23 @@ enum RuntimeAcceptance {
                   && spacing(at: twoLocation) == (reloaded.attribute(.paragraphStyle, at: twoLocation, effectiveRange: nil) as? NSParagraphStyle)?.paragraphSpacing,
                   "live-spacing-matches-reload")
 
+            editor.replaceAll(with: NSAttributedString(string: "Title\nBody", attributes: AparteTypography.baseAttributes))
+            editor.setSelectedRange(NSRange(location: 0, length: 0))
+            editor.applyHeading(level: 1)
+            func liveSpacing(at location: Int) -> CGFloat {
+                (editor.attributedString().attribute(.paragraphStyle, at: location, effectiveRange: nil) as? NSParagraphStyle)?.paragraphSpacing ?? -1
+            }
+            let titleLocation = (editor.string as NSString).range(of: "Title").location
+            let bodyLocation = (editor.string as NSString).range(of: "Body").location
+            check(liveSpacing(at: titleLocation) == AparteTypography.headingSpacing
+                  && liveSpacing(at: bodyLocation) == AparteTypography.paragraphSpacing,
+                  "heading-doubles-the-gap-below")
+            editor.setSelectedRange(NSRange(location: 0, length: 0))
+            editor.applyHeading(level: 1)
+            check(liveSpacing(at: titleLocation) == AparteTypography.paragraphSpacing
+                  && liveSpacing(at: bodyLocation) == AparteTypography.paragraphSpacing,
+                  "removing-heading-restores-paragraph-gap")
+
             editor.replaceAll(with: NSAttributedString(string: "- foo", attributes: AparteTypography.baseAttributes))
             let handTyped = editor.attributedString().attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle
             check(handTyped?.paragraphSpacing == AparteTypography.paragraphSpacing && (handTyped?.headIndent ?? 0) > 0,

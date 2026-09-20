@@ -42,7 +42,7 @@ final class ParagraphFormattingTests: XCTestCase {
     }
 
     func testStructuralSpacingAgreesWithTheDocument() {
-        let rendered = MarkdownCodec.render("First\n\n- One\n- Two\n\nAfter\n\n10. Ten\n11. Eleven")
+        let rendered = MarkdownCodec.render("# Title\n\nFirst\n\n- One\n- Two\n\nAfter\n\n10. Ten\n11. Eleven")
         assertSpacingMatchesReload(rendered)
 
         let storage = NSMutableAttributedString(string: "Hello", attributes: AparteTypography.baseAttributes)
@@ -55,7 +55,25 @@ final class ParagraphFormattingTests: XCTestCase {
         type("\nAfter")
         type("\n10. Ten")
         type(" more")
+        type("\nTitle")
+        storage.addAttribute(.aparteHeadingLevel, value: 1, range: (storage.string as NSString).range(of: "Title"))
+        ParagraphFormatting.applyStructuralSpacing(to: storage)
         assertSpacingMatchesReload(storage)
+    }
+
+    func testHeadingIsFollowedByTwiceTheBodyGap() {
+        let rendered = MarkdownCodec.render("# Title\n\nBody")
+        let source = rendered.string as NSString
+        XCTAssertEqual(spacing(rendered, at: source.range(of: "Title").location), AparteTypography.headingSpacing)
+        XCTAssertEqual(spacing(rendered, at: source.range(of: "Body").location), AparteTypography.paragraphSpacing)
+
+        for level in 1...6 {
+            let hashes = String(repeating: "#", count: level)
+            let last = MarkdownCodec.render("Intro\n\n\(hashes) End")
+            let end = (last.string as NSString).range(of: "End")
+            XCTAssertEqual(spacing(last, at: 0), AparteTypography.paragraphSpacing)
+            XCTAssertEqual(spacing(last, at: end.location), AparteTypography.headingSpacing)
+        }
     }
 
     func testHandTypedMarkerIsSpacedAsAListItem() {
