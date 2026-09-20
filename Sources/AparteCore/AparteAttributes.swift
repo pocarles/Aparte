@@ -41,6 +41,7 @@ public enum AparteTypography {
 
     /// The single place fonts are built. A heading is already semibold, which is
     /// reported as bold, so inline bold inside one needs a visibly heavier face.
+    /// Whole-line bold is not contrast: callers drop it before asking for a font.
     public static func font(headingLevel: Int?, traits: NSFontTraitMask) -> NSFont {
         var font: NSFont
         if let headingLevel {
@@ -69,6 +70,52 @@ public enum AparteTypography {
             attributes[.aparteInlineBold] = traits.contains(.boldFontMask)
         } else {
             attributes.removeValue(forKey: .aparteInlineBold)
+        }
+    }
+
+    /// True when every run in `range` carries inline bold. An empty range does not.
+    public static func inlineBoldCovers(_ text: NSAttributedString, range: NSRange) -> Bool {
+        guard range.length > 0 else { return false }
+        var covers = true
+        text.enumerateAttributes(in: range) { attributes, _, stop in
+            if !inlineTraits(in: attributes).contains(.boldFontMask) {
+                covers = false
+                stop.pointee = true
+            }
+        }
+        return covers
+    }
+
+    /// Heading weight is structural. Whole-line bold has no contrast against the
+    /// heading face, so it is dropped; partial bold stays the heavier face.
+    public static func applyHeadingTypography(
+        level: Int,
+        to text: NSMutableAttributedString,
+        range: NSRange
+    ) {
+        guard range.length > 0 else { return }
+        let wholeLineBold = inlineBoldCovers(text, range: range)
+        var updates: [(NSRange, NSFontTraitMask, [NSAttributedString.Key: Any])] = []
+        text.enumerateAttributes(in: range) { attributes, run, _ in
+            var traits = inlineTraits(in: attributes)
+            if wholeLineBold { traits.remove(.boldFontMask) }
+            updates.append((run, traits, attributes))
+        }
+        for (run, traits, attributes) in updates {
+            var updated = attributes
+            updated.removeValue(forKey: .aparteInlineOnly)
+            updated[.aparteHeadingLevel] = level
+            applyInlineTraits(traits, to: &updated)
+            if let font = updated[.font] {
+                text.addAttribute(.font, value: font, range: run)
+            }
+            text.addAttribute(.aparteHeadingLevel, value: level, range: run)
+            if let inlineBold = updated[.aparteInlineBold] {
+                text.addAttribute(.aparteInlineBold, value: inlineBold, range: run)
+            } else {
+                text.removeAttribute(.aparteInlineBold, range: run)
+            }
+            text.removeAttribute(.aparteInlineOnly, range: run)
         }
     }
 

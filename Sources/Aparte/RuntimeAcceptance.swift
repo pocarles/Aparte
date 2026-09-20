@@ -545,10 +545,30 @@ enum RuntimeAcceptance {
             pad.setMarkdownForRuntimeCheck("# word")
             editor.setSelectedRange(NSRange(location: 0, length: editor.string.utf16.count))
             editor.toggleBold(nil)
-            let boldHeadingMarkdown = document.markdown
-            editor.setSelectedRange(NSRange(location: 0, length: editor.string.utf16.count))
+            check(document.markdown == "# word", "whole-heading-bold-stays-structural")
+            editor.setSelectedRange((editor.string as NSString).range(of: "wor"))
             editor.toggleBold(nil)
-            check(boldHeadingMarkdown == "# **word**" && document.markdown == "# word", "heading-inline-bold-round-trips")
+            let partialHeadingMarkdown = document.markdown
+            editor.setSelectedRange((editor.string as NSString).range(of: "wor"))
+            editor.toggleBold(nil)
+            check(partialHeadingMarkdown == "# **wor**d" && document.markdown == "# word", "heading-inline-bold-round-trips")
+
+            let boldBodyFont = AparteTypography.font(headingLevel: nil, traits: .boldFontMask)
+            editor.replaceAll(with: NSAttributedString(string: "Title", attributes: [
+                .font: boldBodyFont,
+                .foregroundColor: NSColor.labelColor,
+                .paragraphStyle: AparteTypography.bodyParagraphStyle,
+            ]))
+            editor.setSelectedRange(NSRange(location: 0, length: editor.string.utf16.count))
+            editor.applyHeading(level: 1)
+            let fromBoldLine = editor.attributedString().attribute(.font, at: 0, effectiveRange: nil) as? NSFont
+            pad.setMarkdownForRuntimeCheck("# Title")
+            let fromPlain = editor.attributedString().attribute(.font, at: 0, effectiveRange: nil) as? NSFont
+            check(fromBoldLine != nil && fromPlain != nil
+                  && fromBoldLine == fromPlain
+                  && fromBoldLine == AparteTypography.headingFont(level: 1)
+                  && document.markdown == "# Title",
+                  "bold-line-heading-matches-plain-heading")
 
             editor.replaceAll(with: NSAttributedString(string: "• Item", attributes: AparteTypography.baseAttributes))
             editor.setSelectedRange(NSRange(location: 2, length: 0))
@@ -714,6 +734,24 @@ enum RuntimeAcceptance {
             check(liveSpacing(at: titleLocation) == AparteTypography.paragraphSpacing
                   && liveSpacing(at: bodyLocation) == AparteTypography.paragraphSpacing,
                   "removing-heading-restores-paragraph-gap")
+
+            editor.replaceAll(with: NSAttributedString(string: "Intro\nTitle", attributes: AparteTypography.baseAttributes))
+            editor.setSelectedRange((editor.string as NSString).range(of: "Title"))
+            editor.applyHeading(level: 1)
+            let introLocation = (editor.string as NSString).range(of: "Intro").location
+            check(liveSpacing(at: introLocation) == AparteTypography.headingSpacing
+                  && liveSpacing(at: introLocation) == 36,
+                  "gap-above-heading-is-36pt")
+            let reloadedAbove = ParagraphFormatting.editorText(from: editor.attributedString())
+            check((reloadedAbove.attribute(.paragraphStyle, at: introLocation, effectiveRange: nil) as? NSParagraphStyle)?.paragraphSpacing
+                  == liveSpacing(at: introLocation),
+                  "gap-above-heading-matches-reload")
+
+            editor.replaceAll(with: NSAttributedString(string: "- One\nTitle", attributes: AparteTypography.baseAttributes))
+            editor.setSelectedRange((editor.string as NSString).range(of: "Title"))
+            editor.applyHeading(level: 1)
+            check(liveSpacing(at: (editor.string as NSString).range(of: "One").location) == AparteTypography.headingSpacing,
+                  "list-item-before-heading-takes-heading-gap")
 
             editor.replaceAll(with: NSAttributedString(string: "- foo", attributes: AparteTypography.baseAttributes))
             let handTyped = editor.attributedString().attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle

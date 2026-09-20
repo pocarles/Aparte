@@ -146,6 +146,40 @@ final class MarkdownCodecTests: XCTestCase {
         }
     }
 
+    func testFullyBoldHeadingMarkdownMatchesAPlainHeading() {
+        for level in 1...6 {
+            let hashes = String(repeating: "#", count: level)
+            let plain = MarkdownCodec.render("\(hashes) Title")
+            let bold = MarkdownCodec.render("\(hashes) **Title**")
+            XCTAssertEqual(plain.string, "Title")
+            XCTAssertEqual(bold.string, "Title")
+            let plainFont = plain.attribute(.font, at: 0, effectiveRange: nil) as! NSFont
+            let boldFont = bold.attribute(.font, at: 0, effectiveRange: nil) as! NSFont
+            XCTAssertEqual(plainFont, boldFont)
+            XCTAssertEqual(plainFont, AparteTypography.headingFont(level: level))
+            XCTAssertEqual(plain.attribute(.aparteInlineBold, at: 0, effectiveRange: nil) as? Bool, false)
+            XCTAssertEqual(bold.attribute(.aparteInlineBold, at: 0, effectiveRange: nil) as? Bool, false)
+            XCTAssertEqual(MarkdownCodec.markdown(from: plain), "\(hashes) Title")
+            XCTAssertEqual(MarkdownCodec.markdown(from: bold), "\(hashes) Title")
+        }
+
+        let italicBold = MarkdownCodec.render("# ***Title***")
+        XCTAssertEqual(MarkdownCodec.markdown(from: italicBold), "# *Title*")
+        XCTAssertTrue(
+            NSFontManager.shared.traits(of: italicBold.attribute(.font, at: 0, effectiveRange: nil) as! NSFont)
+                .contains(.italicFontMask)
+        )
+        XCTAssertEqual(italicBold.attribute(.aparteInlineBold, at: 0, effectiveRange: nil) as? Bool, false)
+
+        let partial = MarkdownCodec.render("# Hello **world**")
+        XCTAssertEqual(MarkdownCodec.markdown(from: partial), "# Hello **world**")
+        XCTAssertEqual(partial.attribute(.aparteInlineBold, at: 0, effectiveRange: nil) as? Bool, false)
+        XCTAssertEqual(
+            partial.attribute(.aparteInlineBold, at: (partial.string as NSString).range(of: "world").location, effectiveRange: nil) as? Bool,
+            true
+        )
+    }
+
     func testSupportedMarkdownRendersAndReturnsCleanMarkdown() {
         let markdown = """
         # A heading

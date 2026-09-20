@@ -27,14 +27,11 @@ public enum MarkdownCodec {
             let rendered = renderInline(block.content)
 
             if block.headingLevel > 0 {
-                let range = NSRange(location: 0, length: rendered.length)
-                rendered.enumerateAttribute(.font, in: range) { value, run, _ in
-                    let traits = NSFontManager.shared.traits(of: value as? NSFont ?? AparteTypography.bodyFont)
-                        .intersection([.boldFontMask, .italicFontMask])
-                    let font = AparteTypography.font(headingLevel: block.headingLevel, traits: traits)
-                    rendered.addAttributes([.font: font, .aparteHeadingLevel: block.headingLevel,
-                                            .aparteInlineBold: traits.contains(.boldFontMask)], range: run)
-                }
+                AparteTypography.applyHeadingTypography(
+                    level: block.headingLevel,
+                    to: rendered,
+                    range: NSRange(location: 0, length: rendered.length)
+                )
             }
 
             if let list = block.list {
