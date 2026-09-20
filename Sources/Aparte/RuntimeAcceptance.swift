@@ -292,7 +292,7 @@ enum RuntimeAcceptance {
             check(footerButtons.count == 4 && footerButtons.map(\.title) == ["Copy", "Save", "Clear", "Snapshot"],
                   "footer-has-four-feedback-buttons")
             check(footerButtons.allSatisfy {
-                ($0.toolTip?.isEmpty == false) && (($0.accessibilityLabel() as? String)?.isEmpty == false)
+                ($0.toolTip?.isEmpty == false) && ($0.accessibilityLabel()?.isEmpty == false)
             }, "footer-buttons-have-tooltip-and-accessibility-label")
             if let event = NSEvent.enterExitEvent(with: .mouseEntered, location: .zero, modifierFlags: [],
                                                  timestamp: 0, windowNumber: pad.editorForRuntimeCheck.window?.windowNumber ?? 0,

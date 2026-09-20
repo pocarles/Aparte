@@ -698,6 +698,7 @@ struct PadSnapshotImage {
     let png: Data
 }
 
+@MainActor
 enum PadSnapshot {
     enum Result {
         case success(PadSnapshotImage)
@@ -744,11 +745,14 @@ enum PadSnapshot {
         ) else { return .failed }
         rep.size = pageSize
 
+        // NSImage may call this handler off the main actor, so it must not
+        // capture MainActor-isolated state.
+        let inset = margin
         let image = NSImage(size: pageSize, flipped: true) { _ in
             // Drawn in the appearance that is current when the button is pressed.
             NSColor.windowBackgroundColor.setFill()
             NSRect(origin: .zero, size: pageSize).fill()
-            manager.drawGlyphs(forGlyphRange: manager.glyphRange(for: container), at: NSPoint(x: margin, y: margin))
+            manager.drawGlyphs(forGlyphRange: manager.glyphRange(for: container), at: NSPoint(x: inset, y: inset))
             return true
         }
         // The bitmap has no appearance of its own. Draw in the one that is
