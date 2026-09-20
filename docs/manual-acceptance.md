@@ -35,6 +35,9 @@ On September 3, 2026, the locally prepared sandboxed candidate opened with a sep
 
 - [ ] Plain typing, selection, undo, redo, spelling, and keyboard navigation behave like a macOS text editor.
 - [ ] One Return starts a paragraph with visible space above it. Return after a heading resumes body text.
+- [ ] The gap after a list matches the gap between paragraphs, both while typing and after a relaunch.
+- [ ] A heading is followed by twice the body paragraph gap.
+- [ ] Shift-Return inserts a line break inside the paragraph that survives save and reopen.
 - [ ] A long document scrolls smoothly with a wheel, trackpad, scrollbar, and keyboard navigation.
 - [ ] The selection bar appears only for a non-empty selection.
 - [ ] Bold, italic, underline, headings, unordered lists, ordered lists, and links work.
@@ -50,6 +53,7 @@ On September 3, 2026, the locally prepared sandboxed candidate opened with a sep
 - [ ] Pasting plain text stays plain.
 - [ ] Copy as Markdown produces clean Markdown for the selected text or full document.
 - [ ] Copy places the full document on the clipboard with rich and plain representations without moving the cursor or changing the selection.
+- [ ] Snapshot copies the whole pad as an image, including text scrolled out of view, and pastes into another app. Check light and dark mode.
 - [ ] Copy two prose paragraphs into an unsent Mail draft. Paragraph separation, bold, italic, underline, and links remain usable, and body text follows the draft's font and size.
 - [ ] Copy the same text into a plain-text field or an unsent WhatsApp message. Each prose paragraph has one blank line between it and the next; consecutive list items stay compact.
 - [ ] Command-C on a selection, the footer Copy button, and plain-text copy produce the same paragraph boundaries. Copying, pasting back, saving, and reopening does not accumulate extra blank lines.
@@ -63,6 +67,7 @@ On September 3, 2026, the locally prepared sandboxed candidate opened with a sep
 - [ ] Content restores after quitting and relaunching.
 - [ ] Light and dark mode both remain readable.
 - [ ] The pad fits on the smallest connected screen and recenters on the active screen.
+- [ ] On a wide pad, the text column stays capped and centred instead of stretching with the window.
 
 ## Performance and reliability
 
