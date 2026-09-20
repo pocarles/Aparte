@@ -26,6 +26,23 @@ final class ListContinuationTests: XCTestCase {
         XCTAssertNil(ListContinuation.marker(in: "999999999999999999999999999999. item"))
     }
 
+    func testUnorderedPrefixConsumesTrailingWhitespace() throws {
+        let marker = try XCTUnwrap(ListContinuation.marker(in: "-    wrapped item"))
+        XCTAssertEqual(marker.prefix, "-    ")
+        XCTAssertEqual(ListContinuation.nextMarker(after: marker), "-    ")
+        XCTAssertFalse(ListContinuation.isEmptyItem(in: "-    wrapped item", marker: marker))
+        XCTAssertTrue(ListContinuation.isEmptyItem(in: "-    ", marker: marker))
+
+        let bullet = try XCTUnwrap(ListContinuation.marker(in: "•  item"))
+        XCTAssertEqual(bullet.prefix, "•  ")
+
+        let text = NSMutableAttributedString(string: "-    wrapped item", attributes: AparteTypography.baseAttributes)
+        XCTAssertEqual(MarkdownCodec.markdown(from: text), "- wrapped item")
+        let rendered = ParagraphFormatting.editorText(from: text)
+        let style = rendered.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle
+        XCTAssertEqual(style?.headIndent, AparteTypography.markerIndent(for: "-    "))
+    }
+
     func testEmptyMarkerOnlyItemIsEmpty() throws {
         let marker = try XCTUnwrap(ListContinuation.marker(in: "• "))
         XCTAssertTrue(ListContinuation.isEmptyItem(in: "• \t", marker: marker))

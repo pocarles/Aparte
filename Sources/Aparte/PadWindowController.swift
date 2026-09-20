@@ -3,7 +3,7 @@ import AparteCore
 import UniformTypeIdentifiers
 
 @MainActor
-final class PadWindowController: NSObject, NSTextViewDelegate {
+final class PadWindowController: NSObject, NSTextViewDelegate, NSWindowDelegate {
     struct RuntimeSnapshot {
         let size: NSSize
         let isVisible: Bool
@@ -24,6 +24,7 @@ final class PadWindowController: NSObject, NSTextViewDelegate {
     private weak var copyButton: PadActionButton?
     private weak var saveButton: PadActionButton?
     private weak var clearButton: PadActionButton?
+    private weak var snapshotButton: PadActionButton?
     private let countLabel = NSTextField(labelWithString: "")
     private let defaults: UserDefaults
     private let optionsMenu: () -> NSMenu
@@ -240,12 +241,26 @@ final class PadWindowController: NSObject, NSTextViewDelegate {
         updateFormattingBar()
     }
 
+    /// Widest text column at zoom 1. Wider windows grow the side inset instead.
+    /// The snapshot page uses the same measure.
+    static let maximumTextColumn: CGFloat = 620
+
+    /// The old proportional margin is the floor. The inset grows past it only
+    /// to keep the column inside `maximumTextColumn`. Magnification scales
+    /// document coordinates, so the result is divided by zoom.
+    private func textColumnInset(visibleWidth: CGFloat) -> CGFloat {
+        let screenWidth = visibleWidth * zoom
+        let floor = min(200, screenWidth * 0.2)
+        let inset = max(floor, (screenWidth - Self.maximumTextColumn) / 2)
+        return inset / zoom
+    }
+
     private func layoutZoomedEditor() {
         guard let scrollView = editor.enclosingScrollView else { return }
         let visibleSize = scrollView.contentView.bounds.size
         // Magnification scales document coordinates. Reflow to the visible width
         // and keep the pad's physical margins constant as text grows.
-        editor.textContainerInset = NSSize(width: min(200, visibleSize.width * zoom * 0.2) / zoom, height: 120 / zoom)
+        editor.textContainerInset = NSSize(width: textColumnInset(visibleWidth: visibleSize.width), height: 120 / zoom)
         editor.minSize = NSSize(width: 0, height: visibleSize.height)
         editor.maxSize = NSSize(width: visibleSize.width, height: .greatestFiniteMagnitude)
         editor.autoresizingMask = []
@@ -341,12 +356,48 @@ final class PadWindowController: NSObject, NSTextViewDelegate {
         }
     }
 
-    private func resetActionButtons() {
-        [copyButton, saveButton, clearButton].forEach { $0?.resetFeedback() }
+    /// Renders the whole document, including text scrolled out of view, and
+    /// puts one PNG on the clipboard. The live editor is not involved.
+    @objc func snapshotPad() {
+        snapshotPad(to: .general)
     }
 
-    var actionButtonsForRuntimeCheck: [PadActionButton] { [copyButton, saveButton, clearButton].compactMap { $0 } }
+    func snapshotPad(to pasteboard: NSPasteboard) {
+        panel.makeFirstResponder(editor)
+        guard !editor.string.isEmpty else {
+            snapshotButton?.acknowledge("Empty", symbol: "exclamationmark.circle", detail: "The pad is empty. Nothing was copied.")
+            return
+        }
+        let selection = editor.selectedRange()
+        let clipView = editor.enclosingScrollView?.contentView
+        let scrollOrigin = clipView?.bounds.origin
+        switch PadSnapshot.render(editor.attributedString(), columnWidth: Self.maximumTextColumn) {
+        case let .success(image):
+            pasteboard.clearContents()
+            // An NSImage pastes into Messages and Mail. PNG data is what an
+            // image editor and a browser read. The image goes first: writing
+            // it afterwards drops the PNG.
+            pasteboard.writeObjects([image.image])
+            pasteboard.setData(image.png, forType: .png)
+            snapshotButton?.acknowledge("Copied", symbol: "checkmark", detail: "Copied a snapshot of the whole pad.")
+        case .tooLong:
+            snapshotButton?.acknowledge("Failed", symbol: "exclamationmark.circle", detail: "The pad is too long to snapshot.")
+            NSSound.beep()
+        case .failed:
+            snapshotButton?.acknowledge("Failed", symbol: "exclamationmark.circle", detail: "The pad could not be snapshotted. Try again.")
+            NSSound.beep()
+        }
+        editor.setSelectedRange(selection)
+        if let scrollOrigin { clipView?.scroll(to: scrollOrigin) }
+    }
+
+    private func resetActionButtons() {
+        [copyButton, saveButton, clearButton, snapshotButton].forEach { $0?.resetFeedback() }
+    }
+
+    var actionButtonsForRuntimeCheck: [PadActionButton] { [copyButton, saveButton, clearButton, snapshotButton].compactMap { $0 } }
     func copyAllForRuntimeCheck(to pasteboard: NSPasteboard) { performCopyAll(to: pasteboard) }
+    func snapshotForRuntimeCheck(to pasteboard: NSPasteboard) { snapshotPad(to: pasteboard) }
 
     func runtimeSnapshot() -> RuntimeSnapshot {
         RuntimeSnapshot(
@@ -434,6 +485,9 @@ final class PadWindowController: NSObject, NSTextViewDelegate {
 
     func textDidChange(_ notification: Notification) {
         guard let textStorage = editor.textStorage else { return }
+        // Covers typing and paste, which do not go through the editor's own
+        // replacement path. Attribute-only, and a no-op when styles already match.
+        editor.applyStructuralSpacingIfNeeded()
         document.textDidChange(textStorage)
         updateCounts()
     }
@@ -454,6 +508,11 @@ final class PadWindowController: NSObject, NSTextViewDelegate {
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
         panel.isReleasedWhenClosed = false
         panel.contentView = rootView
+        panel.delegate = self
+    }
+
+    func windowDidResize(_ notification: Notification) {
+        layoutZoomedEditor()
     }
 
     private func configureEditor() {
@@ -466,11 +525,15 @@ final class PadWindowController: NSObject, NSTextViewDelegate {
         editor.isAutomaticSpellingCorrectionEnabled = true
         editor.isContinuousSpellCheckingEnabled = true
         editor.drawsBackground = false
-        editor.textContainerInset = NSSize(width: 200, height: 120)
+        editor.textContainerInset = NSSize(
+            width: textColumnInset(visibleWidth: Self.preferredSize.width),
+            height: 120
+        )
         editor.textContainer?.widthTracksTextView = true
         editor.textContainer?.lineFragmentPadding = 0
         editor.typingAttributes = AparteTypography.baseAttributes
         editor.linkTextAttributes = [.foregroundColor: NSColor.linkColor, .underlineStyle: NSUnderlineStyle.single.rawValue]
+        editor.beginObservingEdits()
         editor.textStorage?.setAttributedString(document.attributedText)
         editor.onDismiss = { [weak self] in
             guard let self else { return }
@@ -520,6 +583,17 @@ final class PadWindowController: NSObject, NSTextViewDelegate {
         rootView.addSubview(clearButton)
         self.clearButton = clearButton
 
+        let snapshotButton = PadActionButton(title: "Snapshot", symbol: "camera",
+                                             feedbackTitles: ["Copied", "Empty", "Failed"],
+                                             toolTip: "Copy the whole pad as an image, including text scrolled out of view.",
+                                             target: self, action: #selector(snapshotPad as () -> Void))
+        snapshotButton.setAccessibilityLabel("Snapshot pad")
+        rootView.addSubview(snapshotButton)
+        self.snapshotButton = snapshotButton
+        for button in [copyAllButton, saveButton, clearButton, snapshotButton] {
+            button.setContentCompressionResistancePriority(.required, for: .horizontal)
+        }
+
         let optionsButton = NSButton(image: NSImage(systemSymbolName: "ellipsis", accessibilityDescription: "More options")!, target: self, action: #selector(showOptions(_:)))
         optionsButton.translatesAutoresizingMaskIntoConstraints = false
         optionsButton.isBordered = false
@@ -550,7 +624,9 @@ final class PadWindowController: NSObject, NSTextViewDelegate {
             saveButton.centerYAnchor.constraint(equalTo: copyAllButton.centerYAnchor),
             clearButton.leadingAnchor.constraint(equalTo: saveButton.trailingAnchor, constant: 12),
             clearButton.centerYAnchor.constraint(equalTo: saveButton.centerYAnchor),
-            countLabel.leadingAnchor.constraint(greaterThanOrEqualTo: clearButton.trailingAnchor, constant: 16),
+            snapshotButton.leadingAnchor.constraint(equalTo: clearButton.trailingAnchor, constant: 12),
+            snapshotButton.centerYAnchor.constraint(equalTo: clearButton.centerYAnchor),
+            countLabel.leadingAnchor.constraint(greaterThanOrEqualTo: snapshotButton.trailingAnchor, constant: 16),
             countLabel.trailingAnchor.constraint(equalTo: optionsButton.leadingAnchor, constant: -10),
             optionsButton.trailingAnchor.constraint(equalTo: rootView.trailingAnchor, constant: -12),
             optionsButton.centerYAnchor.constraint(equalTo: copyAllButton.centerYAnchor),
@@ -613,6 +689,85 @@ final class PadWindowController: NSObject, NSTextViewDelegate {
     private func activeScreen() -> NSScreen? {
         let mouse = NSEvent.mouseLocation
         return NSScreen.screens.first(where: { NSMouseInRect(mouse, $0.frame, false) }) ?? NSScreen.main
+    }
+}
+
+/// One page of the pad, drawn from a layout that is not the editor's.
+struct PadSnapshotImage {
+    let image: NSImage
+    let png: Data
+}
+
+@MainActor
+enum PadSnapshot {
+    enum Result {
+        case success(PadSnapshotImage)
+        case tooLong
+        case failed
+    }
+
+    /// Point size of the even margin around the text column.
+    private static let margin: CGFloat = 64
+    /// Retina by default. A page taller than this in pixels drops to 1x, then fails.
+    private static let maximumPixelHeight = 16_384
+
+    static func render(_ text: NSAttributedString, columnWidth: CGFloat) -> Result {
+        let page = ParagraphFormatting.editorText(from: text)
+        guard page.length > 0 else { return .failed }
+
+        let storage = NSTextStorage(attributedString: page)
+        let manager = NSLayoutManager()
+        let container = NSTextContainer(size: NSSize(width: columnWidth, height: CGFloat.greatestFiniteMagnitude))
+        container.lineFragmentPadding = 0
+        manager.addTextContainer(container)
+        storage.addLayoutManager(manager)
+        manager.ensureLayout(for: container)
+
+        let used = manager.usedRect(for: container)
+        guard used.height > 0, used.height.isFinite else { return .failed }
+        let pageSize = NSSize(width: columnWidth + margin * 2, height: ceil(used.height) + margin * 2)
+        let scale: CGFloat = pageSize.height * 2 <= CGFloat(maximumPixelHeight) ? 2 : 1
+        guard pageSize.height * scale <= CGFloat(maximumPixelHeight) else { return .tooLong }
+
+        let pixelsWide = Int(ceil(pageSize.width * scale))
+        let pixelsHigh = Int(ceil(pageSize.height * scale))
+        guard let rep = NSBitmapImageRep(
+            bitmapDataPlanes: nil,
+            pixelsWide: pixelsWide,
+            pixelsHigh: pixelsHigh,
+            bitsPerSample: 8,
+            samplesPerPixel: 4,
+            hasAlpha: true,
+            isPlanar: false,
+            colorSpaceName: .deviceRGB,
+            bytesPerRow: 0,
+            bitsPerPixel: 0
+        ) else { return .failed }
+        rep.size = pageSize
+
+        // NSImage may call this handler off the main actor, so it must not
+        // capture MainActor-isolated state.
+        let inset = margin
+        let image = NSImage(size: pageSize, flipped: true) { _ in
+            // Drawn in the appearance that is current when the button is pressed.
+            NSColor.windowBackgroundColor.setFill()
+            NSRect(origin: .zero, size: pageSize).fill()
+            manager.drawGlyphs(forGlyphRange: manager.glyphRange(for: container), at: NSPoint(x: inset, y: inset))
+            return true
+        }
+        // The bitmap has no appearance of its own. Draw in the one that is
+        // active now, so the page matches the pad in light and in dark.
+        NSApp.effectiveAppearance.performAsCurrentDrawingAppearance {
+            NSGraphicsContext.saveGraphicsState()
+            NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+            image.draw(in: NSRect(origin: .zero, size: pageSize))
+            NSGraphicsContext.restoreGraphicsState()
+        }
+
+        guard let png = rep.representation(using: .png, properties: [:]) else { return .failed }
+        let clipboardImage = NSImage(size: pageSize)
+        clipboardImage.addRepresentation(rep)
+        return .success(PadSnapshotImage(image: clipboardImage, png: png))
     }
 }
 

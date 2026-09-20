@@ -13,7 +13,16 @@ public enum MarkdownCodec {
         let lines = markdown.split(separator: "\n", omittingEmptySubsequences: false)
 
         for (index, rawLine) in lines.enumerated() {
-            let line = String(rawLine)
+            let raw = String(rawLine)
+            let parsed = parseBlock(raw)
+            // CommonMark ends an ATX heading at its newline, so trailing spaces
+            // there are not a hard break. Otherwise a break joins this line to
+            // the next unless that line starts its own block. A list item's
+            // continuation has no marker of its own.
+            let next = index + 1 < lines.count ? parseBlock(String(lines[index + 1])) : nil
+            let continues = next.map { !$0.content.isEmpty && $0.headingLevel == 0 && $0.list == nil } ?? false
+            let hardBreak = parsed.headingLevel == 0 && continues && raw.hasSuffix("  ")
+            let line = hardBreak ? String(raw.dropLast(2)) : raw
             let block = parseBlock(line)
             let rendered = renderInline(block.content)
 
@@ -35,7 +44,8 @@ public enum MarkdownCodec {
 
             output.append(rendered)
             if index < lines.count - 1 {
-                output.append(NSAttributedString(string: "\n", attributes: AparteTypography.baseAttributes))
+                let separator = hardBreak ? "\u{2028}" : "\n"
+                output.append(NSAttributedString(string: separator, attributes: AparteTypography.baseAttributes))
             }
         }
 
@@ -61,11 +71,18 @@ public enum MarkdownCodec {
                 visibleRange.length -= marker.utf16Length
             }
 
-            let inline = serializeInline(
-                attributedString,
-                range: visibleRange,
-                ignoreBold: headingLevel > 0
-            )
+            // A soft break with nothing after it carries no meaning. Dropping
+            // it here keeps the round-trip from writing stray trailing spaces.
+            let content = trimmingTrailingSoftBreak(attributedString, range: visibleRange)
+            // Each side of a soft break is its own inline run. A delimiter that
+            // straddled the break would be parsed on separate physical lines
+            // and come back as literal asterisks.
+            let segments = content.filter { $0.length > 0 }
+            // Nothing but soft breaks: the block carries no text to write.
+            guard !segments.isEmpty else { continue }
+            let inline = segments
+                .map { serializeInline(attributedString, range: $0, ignoreBold: headingLevel > 0) }
+                .joined(separator: "  \n")
             if !result.isEmpty {
                 result += previousWasList && block.marker != nil ? "\n" : "\n\n"
             }
@@ -186,6 +203,30 @@ public enum MarkdownCodec {
         }
         append(string.substring(from: cursor))
         return output
+    }
+
+    /// Drops U+2028 characters that end the block, then splits what remains.
+    private static func trimmingTrailingSoftBreak(
+        _ text: NSAttributedString,
+        range: NSRange
+    ) -> [NSRange] {
+        let source = text.string as NSString
+        var end = NSMaxRange(range)
+        while end > range.location, source.character(at: end - 1) == 0x2028 {
+            end -= 1
+        }
+        var segments: [NSRange] = []
+        var start = range.location
+        var cursor = range.location
+        while cursor < end {
+            if source.character(at: cursor) == 0x2028 {
+                segments.append(NSRange(location: start, length: cursor - start))
+                start = cursor + 1
+            }
+            cursor += 1
+        }
+        segments.append(NSRange(location: start, length: end - start))
+        return segments
     }
 
     private static func serializeInline(

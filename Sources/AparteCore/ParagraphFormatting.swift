@@ -8,6 +8,8 @@ public enum ParagraphFormatting {
         let headingLevel: Int
     }
 
+    /// U+2028 is a soft break inside a paragraph. `getParagraphStart` keeps it
+    /// there; this walk is the one place that assumption is relied on.
     static func blocks(in text: NSAttributedString) -> [Block] {
         let source = text.string as NSString
         var result: [Block] = []
@@ -19,7 +21,11 @@ public enum ParagraphFormatting {
                                      for: NSRange(location: cursor, length: 0))
             let range = NSRange(location: cursor, length: contentsEnd - cursor)
             let line = source.substring(with: range)
-            if !line.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            // A soft break is content even when nothing follows it, so a block
+            // that is only U+2028 survives. Other blank rows stay spacing.
+            let hasContent = line.contains("\u{2028}")
+                || !line.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            if hasContent {
                 let attributes = text.attributes(at: cursor, effectiveRange: nil)
                 let inlineOnly = attributes[.aparteInlineOnly] as? Bool == true
                 result.append(Block(
@@ -31,6 +37,18 @@ public enum ParagraphFormatting {
             cursor = end
         }
         return result
+    }
+
+    /// Spacing follows structure. A list item keeps the tight gap only while the
+    /// next paragraph continues the same list. A heading takes twice the body
+    /// gap. Anything else takes the body gap.
+    static func paragraphStyle(for block: Block, next: Block?) -> NSParagraphStyle {
+        let continuesList = block.marker != nil && block.marker?.kind == next?.marker?.kind
+        let spacing = continuesList
+            ? AparteTypography.listItemSpacing
+            : block.headingLevel > 0 ? AparteTypography.headingSpacing : AparteTypography.paragraphSpacing
+        let indent = block.marker.map { AparteTypography.markerIndent(for: $0.prefix) } ?? 0
+        return AparteTypography.paragraphStyle(spacing: spacing, headIndent: indent)
     }
 
     /// Block meaning belongs to complete paragraphs, not copied fragments.
@@ -65,13 +83,15 @@ public enum ParagraphFormatting {
     /// Empty source lines are represented by paragraph spacing, not extra rows.
     public static func editorText(from text: NSAttributedString) -> NSAttributedString {
         let output = NSMutableAttributedString()
-        for block in blocks(in: text) {
+        let blocks = blocks(in: text)
+        for (index, block) in blocks.enumerated() {
             if output.length > 0 {
                 output.append(NSAttributedString(string: "\n", attributes: AparteTypography.baseAttributes))
             }
             let paragraph = NSMutableAttributedString(attributedString: text.attributedSubstring(from: block.range))
+            let next = index + 1 < blocks.count ? blocks[index + 1] : nil
             paragraph.addAttribute(.paragraphStyle,
-                                   value: block.marker == nil ? AparteTypography.bodyParagraphStyle : AparteTypography.listParagraphStyle,
+                                   value: paragraphStyle(for: block, next: next),
                                    range: NSRange(location: 0, length: paragraph.length))
             output.append(paragraph)
         }
@@ -79,6 +99,60 @@ public enum ParagraphFormatting {
             output.append(NSAttributedString(string: "\n", attributes: AparteTypography.baseAttributes))
         }
         return output
+    }
+
+    /// Writes structural paragraph styles onto `storage` without changing
+    /// characters. Only a style that actually differs is replaced. The caller
+    /// groups this with the edit that caused it, so it adds no undo step.
+    ///
+    /// `edited` limits the work to blocks that intersect that range, plus one
+    /// block on each side: a list item's gap depends on its neighbor. `nil`
+    /// restyles the whole document, which load and a full replacement need.
+    /// Returns how many blocks were visited.
+    @discardableResult
+    public static func applyStructuralSpacing(
+        to storage: NSMutableAttributedString,
+        edited: NSRange? = nil
+    ) -> Int {
+        let blocks = blocks(in: storage)
+        guard !blocks.isEmpty else { return 0 }
+        let scope = edited ?? NSRange(location: 0, length: storage.length)
+        // A block owns the newline that follows it, which `range` excludes.
+        func intersects(_ block: Block) -> Bool {
+            let owned = NSMaxRange(block.range) + 1
+            return scope.location < owned && block.range.location < NSMaxRange(scope)
+        }
+        guard let first = blocks.firstIndex(where: intersects) else { return 0 }
+        let last = blocks.lastIndex(where: intersects) ?? first
+        let lower = max(0, first - 1)
+        let upper = min(blocks.count - 1, last + 1)
+
+        for index in lower...upper {
+            let block = blocks[index]
+            let next = index + 1 < blocks.count ? blocks[index + 1] : nil
+            let style = paragraphStyle(for: block, next: next)
+            var cursor = block.range.location
+            let end = NSMaxRange(block.range)
+            while cursor < end {
+                var effective = NSRange()
+                let current = storage.attribute(.paragraphStyle, at: cursor, effectiveRange: &effective) as? NSParagraphStyle
+                let run = NSIntersectionRange(effective, block.range)
+                if !paragraphStylesMatch(current, style), run.length > 0 {
+                    storage.addAttribute(.paragraphStyle, value: style, range: run)
+                }
+                let nextCursor = NSMaxRange(run)
+                cursor = nextCursor > cursor ? nextCursor : cursor + 1
+            }
+        }
+        return upper - lower + 1
+    }
+
+    private static func paragraphStylesMatch(_ current: NSParagraphStyle?, _ style: NSParagraphStyle) -> Bool {
+        guard let current else { return false }
+        return current.paragraphSpacing == style.paragraphSpacing
+            && current.headIndent == style.headIndent
+            && current.firstLineHeadIndent == style.firstLineHeadIndent
+            && current.lineSpacing == style.lineSpacing
     }
 
     public static func plainText(from text: NSAttributedString) -> String {
@@ -90,6 +164,7 @@ public enum ParagraphFormatting {
                 result += previousWasList && block.marker != nil ? "\n" : "\n\n"
             }
             result += source.substring(with: block.range)
+                .replacingOccurrences(of: "\u{2028}", with: "\n")
             previousWasList = block.marker != nil
         }
         return result
@@ -130,6 +205,7 @@ public enum ParagraphFormatting {
         var result = ""
         text.enumerateAttributes(in: range) { attributes, range, _ in
             var segment = escapeHTML((text.string as NSString).substring(with: range))
+                .replacingOccurrences(of: "\u{2028}", with: "<br>")
             let traits = NSFontManager.shared.traits(of: attributes[.font] as? NSFont ?? AparteTypography.bodyFont)
             if traits.contains(.boldFontMask) { segment = "<strong>\(segment)</strong>" }
             if traits.contains(.italicFontMask) { segment = "<em>\(segment)</em>" }

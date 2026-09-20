@@ -283,12 +283,17 @@ enum RuntimeAcceptance {
             )
             check(initial.editorOwnsFocus, "editor-first-responder")
             check(initial.editorHasSymmetricHorizontalPadding, "editor-symmetric-horizontal-padding")
+            check(textColumnWidth(pad.editorForRuntimeCheck) <= 620.5, "text-column-capped-near-620")
             check(initial.level == .popUpMenu, "panel-above-overlays")
             check(overlays.runtimeWindowCount == NSScreen.screens.count, "overlay-per-screen")
             check(overlays.runtimeWindowsArePassive, "overlays-passive-no-blur-window")
 
             let footerButtons = pad.actionButtonsForRuntimeCheck
-            check(footerButtons.count == 3, "footer-has-three-feedback-buttons")
+            check(footerButtons.count == 4 && footerButtons.map(\.title) == ["Copy", "Save", "Clear", "Snapshot"],
+                  "footer-has-four-feedback-buttons")
+            check(footerButtons.allSatisfy {
+                ($0.toolTip?.isEmpty == false) && ($0.accessibilityLabel()?.isEmpty == false)
+            }, "footer-buttons-have-tooltip-and-accessibility-label")
             if let event = NSEvent.enterExitEvent(with: .mouseEntered, location: .zero, modifierFlags: [],
                                                  timestamp: 0, windowNumber: pad.editorForRuntimeCheck.window?.windowNumber ?? 0,
                                                  context: nil, eventNumber: 0, trackingNumber: 0, userData: nil) {
@@ -316,7 +321,8 @@ enum RuntimeAcceptance {
                     button.appearance = originalAppearance
                     check(button.acceptsFirstResponder && !button.mouseDownCanMoveWindow, "footer-\(index)-keeps-keyboard-access-and-does-not-drag-pad")
                     let initialFrames = footerButtons.map(\.frame)
-                    for (title, symbol) in [(["Copied", "Saved", "Cleared"][index], "checkmark"),
+                    let successTitle = ["Copied", "Saved", "Cleared", "Copied"][index]
+                    for (title, symbol) in [(successTitle, "checkmark"),
                                             ("Empty", "exclamationmark.circle"), ("Failed", "exclamationmark.circle")] {
                         button.acknowledge(title, symbol: symbol, detail: "The action failed.")
                         button.superview?.layoutSubtreeIfNeeded()
@@ -362,7 +368,7 @@ enum RuntimeAcceptance {
             pad.clearForRuntimeCheck()
             drainRunLoop(for: 0.05)
             check(document.markdown.isEmpty, "clear-empties-document")
-            check(footerButtons.last?.title == "Cleared" && pad.runtimeSnapshot().editorOwnsFocus, "clear-acknowledges-success-and-keeps-editor-focus")
+            check(footerButtons[2].title == "Cleared" && pad.runtimeSnapshot().editorOwnsFocus, "clear-acknowledges-success-and-keeps-editor-focus")
             pad.undoForRuntimeCheck()
             drainRunLoop(for: 0.05)
             check(document.markdown == recoverableMarkdown, "single-undo-restores-cleared-document")
@@ -381,9 +387,9 @@ enum RuntimeAcceptance {
             pad.clearForRuntimeCheck()
             let recoveryAfterEmptyClear = try store.loadRecovery()
             check(recoveryAfterEmptyClear == recoverableMarkdown, "empty-clear-preserves-recovery")
-            check(footerButtons.last?.title == "Empty", "empty-clear-acknowledged")
+            check(footerButtons[2].title == "Empty", "empty-clear-acknowledged")
             pad.saveMarkdownAs()
-            check(footerButtons.count == 3 && footerButtons[1].title == "Empty" && pad.runtimeSnapshot().editorOwnsFocus,
+            check(footerButtons.count == 4 && footerButtons[1].title == "Empty" && pad.runtimeSnapshot().editorOwnsFocus,
                   "empty-save-acknowledged-without-losing-focus")
             try document.discardRecovery()
             check(!pad.hasRecovery && document.markdown.isEmpty, "discard-keeps-current-pad")
@@ -416,7 +422,7 @@ enum RuntimeAcceptance {
             check(footerButtons.first?.title == "Copied" && clipboard.string(forType: .string) == "A second copy",
                   "repeated-copy-feedback-outlasts-the-previous-reset")
             drainRunLoop(for: 0.3)
-            check(footerButtons.map(\.title) == ["Copy", "Save", "Clear"], "footer-feedback-resets-without-polling")
+            check(footerButtons.map(\.title) == ["Copy", "Save", "Clear", "Snapshot"], "footer-feedback-resets-without-polling")
             pad.setMarkdownForRuntimeCheck("Hello **world** 👩🏽‍💻")
             editor.setSelectedRange(NSRange(location: 6, length: 5))
             editor.copyPlainText(to: clipboard)
@@ -582,7 +588,13 @@ enum RuntimeAcceptance {
             editor.insertText("Second paragraph", replacementRange: editor.selectedRange())
             check(editor.string == "First paragraph\nSecond paragraph", "return-creates-one-paragraph-boundary")
             let paragraphStyle = editor.attributedString().attribute(.paragraphStyle, at: 16, effectiveRange: nil) as? NSParagraphStyle
-            check(paragraphStyle?.paragraphSpacing == 30, "return-applies-visible-paragraph-spacing")
+            check(paragraphStyle?.paragraphSpacing == AparteTypography.paragraphSpacing, "return-applies-visible-paragraph-spacing")
+            editor.setSelectedRange(NSRange(location: editor.string.utf16.count, length: 0))
+            editor.insertNewline(nil)
+            let withOneBreak = editor.string
+            editor.insertNewline(nil)
+            check(withOneBreak == "First paragraph\nSecond paragraph\n" && editor.string == withOneBreak,
+                  "return-on-empty-paragraph-adds-no-row")
             let footerParagraphSelection = NSRange(location: 6, length: 5)
             editor.setSelectedRange(footerParagraphSelection)
             clipboard.clearContents()
@@ -613,6 +625,16 @@ enum RuntimeAcceptance {
             pad.zoomIn()
             drainRunLoop(for: 0.05)
             check(abs(pad.zoomForRuntimeCheck - 1.1) < 0.01, "zoom-in-changes-display")
+            check(textColumnWidth(editor) <= 620.5, "zoomed-text-column-stays-capped")
+            let wideFrame = editor.window?.frame ?? .zero
+            editor.window?.setContentSize(NSSize(width: 768, height: wideFrame.height))
+            drainRunLoop(for: 0.05)
+            let narrowColumn = textColumnWidth(editor)
+            let narrowWidth = editor.enclosingScrollView?.contentView.bounds.width ?? 0
+            let oldColumn = narrowWidth * (1 - 2 * 0.2)
+            check(narrowColumn + 1 >= oldColumn, "narrow-pad-keeps-proportional-column")
+            editor.window?.setFrame(wideFrame, display: true)
+            drainRunLoop(for: 0.05)
             if let clip = editor.enclosingScrollView?.contentView {
                 check(editor.frame.width <= clip.bounds.width + 1, "zoom-reflows-without-horizontal-clipping")
             }
@@ -657,12 +679,76 @@ enum RuntimeAcceptance {
                 check(!document.markdown.contains("- Plain paragraph") && !document.markdown.contains("8. Plain paragraph"), "empty-list-exit-\(source.prefix(1))")
             }
 
+            // Inserted as text, not through Return, so list continuation does
+            // not turn the following paragraph into another item.
+            editor.replaceAll(with: NSAttributedString(string: "Before\n- one\n- two\nAfter", attributes: AparteTypography.baseAttributes))
+            let listed = editor.attributedString()
+            let oneLocation = (editor.string as NSString).range(of: "one").location
+            let twoLocation = (editor.string as NSString).range(of: "two").location
+            let afterLocation = (editor.string as NSString).range(of: "After").location
+            func spacing(at location: Int) -> CGFloat {
+                (listed.attribute(.paragraphStyle, at: location, effectiveRange: nil) as? NSParagraphStyle)?.paragraphSpacing ?? -1
+            }
+            check(spacing(at: oneLocation) == AparteTypography.listItemSpacing
+                  && spacing(at: twoLocation) == AparteTypography.paragraphSpacing
+                  && spacing(at: afterLocation) == spacing(at: 0),
+                  "gap-after-list-equals-paragraph-gap")
+            let reloaded = ParagraphFormatting.editorText(from: listed)
+            check(reloaded.string == listed.string
+                  && spacing(at: twoLocation) == (reloaded.attribute(.paragraphStyle, at: twoLocation, effectiveRange: nil) as? NSParagraphStyle)?.paragraphSpacing,
+                  "live-spacing-matches-reload")
+
+            editor.replaceAll(with: NSAttributedString(string: "Title\nBody", attributes: AparteTypography.baseAttributes))
+            editor.setSelectedRange(NSRange(location: 0, length: 0))
+            editor.applyHeading(level: 1)
+            func liveSpacing(at location: Int) -> CGFloat {
+                (editor.attributedString().attribute(.paragraphStyle, at: location, effectiveRange: nil) as? NSParagraphStyle)?.paragraphSpacing ?? -1
+            }
+            let titleLocation = (editor.string as NSString).range(of: "Title").location
+            let bodyLocation = (editor.string as NSString).range(of: "Body").location
+            check(liveSpacing(at: titleLocation) == AparteTypography.headingSpacing
+                  && liveSpacing(at: bodyLocation) == AparteTypography.paragraphSpacing,
+                  "heading-doubles-the-gap-below")
+            editor.setSelectedRange(NSRange(location: 0, length: 0))
+            editor.applyHeading(level: 1)
+            check(liveSpacing(at: titleLocation) == AparteTypography.paragraphSpacing
+                  && liveSpacing(at: bodyLocation) == AparteTypography.paragraphSpacing,
+                  "removing-heading-restores-paragraph-gap")
+
+            editor.replaceAll(with: NSAttributedString(string: "- foo", attributes: AparteTypography.baseAttributes))
+            let handTyped = editor.attributedString().attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle
+            check(handTyped?.paragraphSpacing == AparteTypography.paragraphSpacing && (handTyped?.headIndent ?? 0) > 0,
+                  "hand-typed-marker-is-a-list-item")
+
+            editor.replaceAll(with: NSAttributedString(string: "Best,", attributes: AparteTypography.baseAttributes))
+            editor.setSelectedRange(NSRange(location: editor.string.utf16.count, length: 0))
+            editor.insertLineBreak(nil)
+            editor.insertText("Ada", replacementRange: editor.selectedRange())
+            check(editor.string.contains("\u{2028}") && document.markdown == "Best,  \nAda", "shift-return-inserts-soft-break")
+
             let longMarkdown = (1...120)
                 .map { "Paragraph \($0): enough text to exercise the native scroll view." }
                 .joined(separator: "\n\n")
             pad.setMarkdownForRuntimeCheck(longMarkdown)
             drainRunLoop(for: 0.1)
             check(pad.runtimeSnapshot().editorCanScroll, "long-document-is-scrollable")
+            let snapshotSelection = editor.selectedRange()
+            let snapshotScroll = editor.enclosingScrollView?.contentView.bounds.origin
+            let snapshotMarkdown = document.markdown
+            let snapshotBoard = NSPasteboard.withUniqueName()
+            defer { snapshotBoard.releaseGlobally() }
+            pad.snapshotForRuntimeCheck(to: snapshotBoard)
+            let visibleTextHeight = editor.enclosingScrollView?.contentView.bounds.height ?? 0
+            if let png = snapshotBoard.data(forType: .png),
+               let rep = NSBitmapImageRep(data: png) {
+                check(CGFloat(rep.pixelsHigh) > visibleTextHeight, "snapshot-includes-scrolled-text")
+            } else {
+                failed.append("snapshot-includes-scrolled-text")
+            }
+            check(footerButtons.last?.title == "Copied" && document.markdown == snapshotMarkdown
+                  && editor.selectedRange() == snapshotSelection
+                  && editor.enclosingScrollView?.contentView.bounds.origin == snapshotScroll,
+                  "snapshot-leaves-document-selection-and-scroll")
             check(pad.scrollToEndForRuntimeCheck(), "long-document-scrolls-to-end")
             pad.zoomIn()
             drainRunLoop(for: 0.05)
@@ -940,6 +1026,13 @@ enum RuntimeAcceptance {
                 NSApp.updateWindows()
             }
         }
+    }
+
+    /// On-screen width of the text column. Magnification scales document points.
+    private static func textColumnWidth(_ editor: NSTextView) -> CGFloat {
+        let zoom = editor.enclosingScrollView?.magnification ?? 1
+        let container = editor.textContainer?.containerSize.width ?? 0
+        return container * zoom
     }
 
     private static func focusEditorForShortcutChecks(_ editor: NSTextView) -> Bool {
