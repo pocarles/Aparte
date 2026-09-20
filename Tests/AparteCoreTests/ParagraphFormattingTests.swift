@@ -75,6 +75,23 @@ final class ParagraphFormattingTests: XCTestCase {
         assertSpacingMatchesReload(live)
     }
 
+    func testLevel2HeadingTakesTheSameAirAsLevel1() {
+        let rendered = MarkdownCodec.render("Intro\n\n## Title\n\nBody")
+        let source = rendered.string as NSString
+        XCTAssertEqual((rendered.attribute(.font, at: source.range(of: "Title").location, effectiveRange: nil) as? NSFont)?.pointSize, 24)
+        XCTAssertEqual(spacing(rendered, at: source.range(of: "Intro").location), AparteTypography.headingSpacing)
+        XCTAssertEqual(spacing(rendered, at: source.range(of: "Title").location), AparteTypography.headingSpacing)
+        XCTAssertEqual(spacing(rendered, at: source.range(of: "Body").location), AparteTypography.paragraphSpacing)
+        XCTAssertEqual(spacing(rendered, at: source.range(of: "Intro").location), 36)
+        XCTAssertEqual(spacing(rendered, at: source.range(of: "Title").location), 36)
+
+        let afterList = MarkdownCodec.render("- One\n- Two\n\n## Title")
+        let listed = afterList.string as NSString
+        XCTAssertEqual(spacing(afterList, at: listed.range(of: "One").location), AparteTypography.listItemSpacing)
+        XCTAssertEqual(spacing(afterList, at: listed.range(of: "Two").location), AparteTypography.headingSpacing)
+        XCTAssertEqual(spacing(afterList, at: listed.range(of: "Title").location), AparteTypography.headingSpacing)
+    }
+
     func testHeadingIsFollowedByTwiceTheBodyGap() {
         let rendered = MarkdownCodec.render("# Title\n\nBody")
         let source = rendered.string as NSString

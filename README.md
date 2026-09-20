@@ -75,6 +75,7 @@ Shortcuts work while writing and while the options card is open.
 | Open Settings | Command-comma |
 | Bold / italic / underline | Command-B / I / U |
 | Heading | Command-Option-1 |
+| Heading 2 | Command-Option-2 |
 | Bulleted / numbered list | Command-Shift-8 / 7 |
 | Add a link to selected text | Command-K |
 | Undo / redo | Command-Z / Command-Shift-Z |
@@ -84,9 +85,10 @@ Shortcuts work while writing and while the options card is open.
 | Quit Aparte | Command-Q |
 
 Bold, italic, and underline apply to the selection, or to what you type next when
-nothing is selected. Heading and the two list commands toggle: running one on text
-that already has that heading level or list marker returns the lines to body text.
-The menu shows a checkmark on whichever of them applies where the cursor is.
+nothing is selected. Heading, heading 2, and the two list commands toggle: running
+one on text that already has that heading level or list marker returns the lines
+to body text. The menu shows a checkmark on whichever of them applies where the
+cursor is.
 Pressing Backspace right after a bullet or number removes the whole marker, and the
 line stops being a list item.
 

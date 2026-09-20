@@ -509,6 +509,104 @@ enum RuntimeAcceptance {
             editor.applyHeading(level: 1)
             check(editor.string == "Item" && document.markdown == "Item", "heading-toggles-off")
 
+            func headingFont(at location: Int = 0) -> NSFont? {
+                editor.attributedString().attribute(.font, at: location, effectiveRange: nil) as? NSFont
+            }
+            func headingLevel(at location: Int = 0) -> Int? {
+                editor.attributedString().attribute(.aparteHeadingLevel, at: location, effectiveRange: nil) as? Int
+            }
+            func headingAttributesAreOnly(level: Int) -> Bool {
+                guard editor.attributedString().length > 0 else { return false }
+                var clean = true
+                editor.attributedString().enumerateAttributes(
+                    in: NSRange(location: 0, length: editor.attributedString().length)
+                ) { attributes, _, stop in
+                    if attributes[.aparteHeadingLevel] as? Int != level {
+                        clean = false
+                        stop.pointee = true
+                        return
+                    }
+                    let font = attributes[.font] as? NSFont
+                    if font?.pointSize != AparteTypography.headingSize(level: level) {
+                        clean = false
+                        stop.pointee = true
+                    }
+                }
+                return clean
+            }
+            func menuState(for action: Selector) -> NSControl.StateValue {
+                let item = NSMenuItem(title: "", action: action, keyEquivalent: "")
+                _ = editor.validateUserInterfaceItem(item)
+                return item.state
+            }
+            func paragraphSpacing(at location: Int) -> CGFloat {
+                (editor.attributedString().attribute(.paragraphStyle, at: location, effectiveRange: nil) as? NSParagraphStyle)?.paragraphSpacing ?? -1
+            }
+
+            editor.replaceAll(with: NSAttributedString(string: "Title", attributes: AparteTypography.baseAttributes))
+            editor.setSelectedRange(NSRange(location: 0, length: editor.string.utf16.count))
+            editor.applyHeading(level: 2)
+            let heading2Font = headingFont()
+            check(document.markdown == "## Title"
+                  && headingLevel() == 2
+                  && heading2Font?.pointSize == 24
+                  && heading2Font == AparteTypography.headingFont(level: 2),
+                  "heading-2-is-24pt-semibold")
+            check(paragraphSpacing(at: 0) == AparteTypography.headingSpacing, "heading-2-has-36pt-below")
+            editor.replaceAll(with: NSAttributedString(string: "Intro\nTitle", attributes: AparteTypography.baseAttributes))
+            editor.setSelectedRange((editor.string as NSString).range(of: "Title"))
+            editor.applyHeading(level: 2)
+            check(paragraphSpacing(at: (editor.string as NSString).range(of: "Intro").location) == AparteTypography.headingSpacing
+                  && paragraphSpacing(at: (editor.string as NSString).range(of: "Title").location) == AparteTypography.headingSpacing,
+                  "heading-2-has-36pt-above-and-below")
+
+            editor.replaceAll(with: NSAttributedString(string: "Title", attributes: AparteTypography.baseAttributes))
+            editor.setSelectedRange(NSRange(location: 0, length: editor.string.utf16.count))
+            editor.applyHeading(level: 1)
+            editor.applyHeading(level: 2)
+            check(document.markdown == "## Title" && headingAttributesAreOnly(level: 2)
+                  && menuState(for: #selector(EditorTextView.makeHeading(_:))) == .off
+                  && menuState(for: #selector(EditorTextView.makeHeading2(_:))) == .on,
+                  "heading-1-to-2-leaves-no-stale-attributes")
+            editor.applyHeading(level: 1)
+            check(document.markdown == "# Title" && headingAttributesAreOnly(level: 1)
+                  && menuState(for: #selector(EditorTextView.makeHeading(_:))) == .on
+                  && menuState(for: #selector(EditorTextView.makeHeading2(_:))) == .off,
+                  "heading-2-to-1-leaves-no-stale-attributes")
+            editor.applyHeading(level: 2)
+            editor.applyHeading(level: 2)
+            check(editor.string == "Title" && document.markdown == "Title"
+                  && headingLevel() == nil
+                  && headingFont()?.pointSize == AparteTypography.bodySize,
+                  "heading-2-toggles-off")
+
+            pad.setMarkdownForRuntimeCheck("Title")
+            pad.selectForRuntimeCheck(NSRange(location: 0, length: editor.string.utf16.count))
+            drainRunLoop(for: 0.05)
+            let barButtons = pad.formattingBarButtonsForRuntimeCheck()
+            let h1Button = barButtons.first { $0.title == "H1" }
+            let h2Button = barButtons.first { $0.title == "H2" }
+            check(h1Button != nil && h2Button != nil
+                  && h1Button?.toolTip == "Heading" && h2Button?.toolTip == "Heading 2",
+                  "formatting-bar-has-h1-and-h2")
+            h2Button?.performClick(nil)
+            pad.selectForRuntimeCheck(NSRange(location: 0, length: editor.string.utf16.count))
+            check(document.markdown == "## Title" && headingLevel() == 2
+                  && h2Button?.state == .on && h1Button?.state == .off,
+                  "h2-button-applies-level-2")
+            h2Button?.performClick(nil)
+            pad.selectForRuntimeCheck(NSRange(location: 0, length: editor.string.utf16.count))
+            check(document.markdown == "Title" && headingLevel() == nil
+                  && h2Button?.state == .off && h1Button?.state == .off,
+                  "h2-button-toggles-off")
+            h1Button?.performClick(nil)
+            pad.selectForRuntimeCheck(NSRange(location: 0, length: editor.string.utf16.count))
+            h2Button?.performClick(nil)
+            pad.selectForRuntimeCheck(NSRange(location: 0, length: editor.string.utf16.count))
+            check(document.markdown == "## Title" && headingAttributesAreOnly(level: 2)
+                  && h1Button?.state == .off && h2Button?.state == .on,
+                  "h2-button-switches-from-h1")
+
             editor.replaceAll(with: NSAttributedString(string: "word", attributes: AparteTypography.baseAttributes))
             editor.undoManager?.removeAllActions()
             editor.setSelectedRange(NSRange(location: 0, length: editor.string.utf16.count))
@@ -787,6 +885,33 @@ enum RuntimeAcceptance {
                   && editor.selectedRange() == snapshotSelection
                   && editor.enclosingScrollView?.contentView.bounds.origin == snapshotScroll,
                   "snapshot-leaves-document-selection-and-scroll")
+
+            let pageSample = NSAttributedString(string: "A", attributes: AparteTypography.baseAttributes)
+            let sampleColor = pageSample.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor
+            check(sampleColor == .labelColor, "snapshot-text-uses-label-color")
+            let previousAppearance = NSApp.appearance
+            for (name, appearanceName, lightPage) in [
+                ("light", NSAppearance.Name.aqua, true),
+                ("dark", NSAppearance.Name.darkAqua, false),
+            ] {
+                guard let appearance = NSAppearance(named: appearanceName) else {
+                    failed.append("snapshot-page-\(name)")
+                    continue
+                }
+                NSApp.appearance = appearance
+                switch PadSnapshot.render(pageSample, columnWidth: PadWindowController.maximumTextColumn) {
+                case let .success(image):
+                    check(snapshotCornerMatchesPage(image.png, appearance: appearance),
+                          "snapshot-page-\(name)")
+                    check(snapshotTextContrastsPage(image.png, lightPage: lightPage),
+                          "snapshot-text-\(name)")
+                default:
+                    failed.append("snapshot-page-\(name)")
+                    failed.append("snapshot-text-\(name)")
+                }
+            }
+            NSApp.appearance = previousAppearance
+
             check(pad.scrollToEndForRuntimeCheck(), "long-document-scrolls-to-end")
             pad.zoomIn()
             drainRunLoop(for: 0.05)
@@ -964,6 +1089,13 @@ enum RuntimeAcceptance {
             check(NSApp.mainMenu?.performKeyEquivalent(with: headingEvent) == true && document.markdown.hasPrefix("# "), "heading-shortcut-applies-formatting")
             pad.setMarkdownForRuntimeCheck("Keyboard checks")
             editor.setSelectedRange(NSRange(location: 0, length: editor.string.utf16.count))
+            let heading2Event = shortcutEvent("2", modifiers: [.command, .option], window: editor.window!)
+            check(NSApp.mainMenu?.performKeyEquivalent(with: heading2Event) == true && document.markdown.hasPrefix("## "),
+                  "heading-2-shortcut-applies-formatting")
+            check(NSApp.mainMenu?.performKeyEquivalent(with: heading2Event) == true && document.markdown == "Keyboard checks",
+                  "heading-2-shortcut-toggles-off")
+            pad.setMarkdownForRuntimeCheck("Keyboard checks")
+            editor.setSelectedRange(NSRange(location: 0, length: editor.string.utf16.count))
             let countsBeforeKey = pad.showsCounts
             let countsEvent = shortcutEvent("w", modifiers: [.command, .shift], window: editor.window!)
             check(NSApp.mainMenu?.performKeyEquivalent(with: countsEvent) == true && pad.showsCounts != countsBeforeKey, "count-shortcut-works-with-card-closed")
@@ -1066,6 +1198,51 @@ enum RuntimeAcceptance {
         }
     }
 
+    /// Corner pixel of a snapshot PNG, compared to the page colour resolved in
+    /// `appearance`. Allows a point or two per channel for colour-space rounding.
+    /// Compare the stored 8-bit channels; converting a calibrated PNG pixel
+    /// through sRGB shifts the sample by more than that tolerance.
+    private static func snapshotCornerMatchesPage(_ png: Data, appearance: NSAppearance) -> Bool {
+        guard let rep = NSBitmapImageRep(data: png),
+              let data = rep.bitmapData, rep.bitsPerSample == 8, rep.samplesPerPixel >= 3 else { return false }
+        var expected = (0, 0, 0)
+        appearance.performAsCurrentDrawingAppearance {
+            guard let color = PadSnapshot.pageBackgroundColor.usingColorSpace(.sRGB) else { return }
+            expected = (
+                Int((color.redComponent * 255).rounded()),
+                Int((color.greenComponent * 255).rounded()),
+                Int((color.blueComponent * 255).rounded())
+            )
+        }
+        return abs(Int(data[0]) - expected.0) <= 2
+            && abs(Int(data[1]) - expected.1) <= 2
+            && abs(Int(data[2]) - expected.2) <= 2
+    }
+
+    /// Text still uses `labelColor`, so glyphs are dark on the light page and
+    /// light on the dark page. Scan for pixels that are not the page fill.
+    private static func snapshotTextContrastsPage(_ png: Data, lightPage: Bool) -> Bool {
+        guard let rep = NSBitmapImageRep(data: png),
+              let corner = rep.colorAt(x: 0, y: 0)?.usingColorSpace(.sRGB) else { return false }
+        let page = [corner.redComponent, corner.greenComponent, corner.blueComponent]
+        var luminances: [CGFloat] = []
+        let step = max(1, min(rep.pixelsWide, rep.pixelsHigh) / 64)
+        for y in Swift.stride(from: 0, to: rep.pixelsHigh, by: step) {
+            for x in Swift.stride(from: 0, to: rep.pixelsWide, by: step) {
+                guard let color = rep.colorAt(x: x, y: y)?.usingColorSpace(.sRGB) else { continue }
+                let rgb = [color.redComponent, color.greenComponent, color.blueComponent]
+                let delta = zip(rgb, page).map { abs($0.0 - $0.1) }.max() ?? 0
+                if delta > 16 / 255.0 {
+                    luminances.append(0.2126 * color.redComponent + 0.7152 * color.greenComponent + 0.0722 * color.blueComponent)
+                }
+            }
+        }
+        guard !luminances.isEmpty else { return false }
+        let mean = luminances.reduce(0, +) / CGFloat(luminances.count)
+        let pageLuma = 0.2126 * corner.redComponent + 0.7152 * corner.greenComponent + 0.0722 * corner.blueComponent
+        return lightPage ? mean < pageLuma : mean > pageLuma
+    }
+
     /// On-screen width of the text column. Magnification scales document points.
     private static func textColumnWidth(_ editor: NSTextView) -> CGFloat {
         let zoom = editor.enclosingScrollView?.magnification ?? 1
@@ -1096,7 +1273,7 @@ enum RuntimeAcceptance {
         let codes: [String: Int] = ["a": kVK_ANSI_A, "b": kVK_ANSI_B, "c": kVK_ANSI_C, "h": kVK_ANSI_H,
                                   "i": kVK_ANSI_I, "k": kVK_ANSI_K, "l": kVK_ANSI_L, "q": kVK_ANSI_Q,
                                   "r": kVK_ANSI_R, "s": kVK_ANSI_S, "u": kVK_ANSI_U, "v": kVK_ANSI_V,
-                                  "w": kVK_ANSI_W, "x": kVK_ANSI_X, "z": kVK_ANSI_Z, "1": kVK_ANSI_1,
+                                  "w": kVK_ANSI_W, "x": kVK_ANSI_X, "z": kVK_ANSI_Z, "1": kVK_ANSI_1, "2": kVK_ANSI_2,
                                   "7": kVK_ANSI_7, "8": kVK_ANSI_8, "&": kVK_ANSI_7, "*": kVK_ANSI_8, "0": kVK_ANSI_0, "+": kVK_ANSI_Equal,
                                   "-": kVK_ANSI_Minus, "/": kVK_ANSI_Slash, ",": kVK_ANSI_Comma, "\u{7f}": kVK_Delete]
         let shifted: [String: String] = ["7": "&", "8": "*"]
