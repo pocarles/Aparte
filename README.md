@@ -11,8 +11,8 @@ local document is waiting when you come back.
 [Download the latest release](https://github.com/pocarles/Aparte/releases/latest/download/Aparte.dmg)
 or read the [product page](https://pocarles.com/aparte/).
 
-Version 1.5.0 makes every formatting command undoable, lets bold, italic, and underline apply to what you type next, turns heading and list commands into toggles, and opens Save as a sheet on the pad. The shortcut recorder refuses system-wide chords, and the screen dims more while you write. Your writing stays on your Mac.
-Read the [release notes](https://github.com/pocarles/Aparte/releases/tag/v1.5.0).
+Version 1.6.0 spaces lists and headings from the document's structure, keeps the text column capped and centred on a wide pad, lets Shift-Return insert a line break that survives save and reopen, and adds Snapshot to copy the whole pad as an image. Your writing stays on your Mac.
+Read the [release notes](https://github.com/pocarles/Aparte/releases/tag/v1.6.0).
 
 ## What it does
 

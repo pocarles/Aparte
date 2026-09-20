@@ -2,7 +2,7 @@
 
 All notable changes appear here. The project follows semantic versioning.
 
-## Unreleased
+## 1.6.0 - 2026-09-20
 
 - Paragraph spacing comes from the document's structure, so the gap after a list is the same while typing and after the pad reloads.
 - A heading is followed by twice the usual paragraph gap, so a titled note breathes.
