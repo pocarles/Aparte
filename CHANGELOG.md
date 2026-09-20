@@ -14,6 +14,7 @@ All notable changes appear here. The project follows semantic versioning.
 - Return at the end of an empty paragraph no longer adds a blank row.
 - Snapshot, in the pad footer, copies the whole pad as an image, including text scrolled out of view.
 - The snapshot page is a cool off-white in light appearance, and a matching dark tone in dark appearance, instead of the pad's grey.
+- A second heading, at 24pt, sits next to H1 in the formatting bar and at Command-Option-2. Applying the same level again returns the line to body text.
 
 ## 1.5.0 - 2026-09-13
 

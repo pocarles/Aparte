@@ -451,6 +451,7 @@ final class PadWindowController: NSObject, NSTextViewDelegate, NSWindowDelegate 
     }
 
     var editorForRuntimeCheck: EditorTextView { editor }
+    func formattingBarButtonsForRuntimeCheck() -> [NSButton] { formattingBar.buttonsForRuntimeCheck() }
     var countForRuntimeCheck: String { countLabel.stringValue }
     var countIsVisibleForRuntimeCheck: Bool {
         rootView.layoutSubtreeIfNeeded()
@@ -683,6 +684,7 @@ final class PadWindowController: NSObject, NSTextViewDelegate, NSWindowDelegate 
             y = max(40, selectionRect.minY - barSize.height - 8)
         }
         formattingBar.setFrameOrigin(NSPoint(x: x, y: y))
+        formattingBar.refresh()
         formattingBar.isHidden = false
     }
 

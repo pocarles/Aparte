@@ -73,10 +73,11 @@ struct MenuCommand {
     static let italic = Self(title: "Italic", action: #selector(EditorTextView.toggleItalic(_:)), key: "i")
     static let underline = Self(title: "Underline", action: #selector(EditorTextView.toggleUnderline(_:)), key: "u")
     static let heading = Self(title: "Heading", action: #selector(EditorTextView.makeHeading(_:)), key: "1", modifiers: [.command, .option])
+    static let heading2 = Self(title: "Heading 2", action: #selector(EditorTextView.makeHeading2(_:)), key: "2", modifiers: [.command, .option])
     static let bullets = Self(title: "Bulleted list", action: #selector(EditorTextView.makeBulletedList(_:)), key: "8", modifiers: [.command, .shift])
     static let numbers = Self(title: "Numbered list", action: #selector(EditorTextView.makeNumberedList(_:)), key: "7", modifiers: [.command, .shift])
     static let link = Self(title: "Add link…", action: #selector(EditorTextView.addLink(_:)), key: "k")
 
     static let editing = [undo, redo, cut, copy, paste, selectAll]
-    static let formatting = [bold, italic, underline, heading, bullets, numbers, link]
+    static let formatting = [bold, italic, underline, heading, heading2, bullets, numbers, link]
 }

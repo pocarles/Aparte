@@ -180,6 +180,17 @@ final class MarkdownCodecTests: XCTestCase {
         )
     }
 
+    func testLevel2HeadingRoundTripsAsATXHashes() {
+        let markdown = "## A second heading"
+        let rendered = MarkdownCodec.render(markdown)
+        XCTAssertEqual(rendered.string, "A second heading")
+        XCTAssertEqual(rendered.attribute(.aparteHeadingLevel, at: 0, effectiveRange: nil) as? Int, 2)
+        let font = rendered.attribute(.font, at: 0, effectiveRange: nil) as! NSFont
+        XCTAssertEqual(font.pointSize, 24)
+        XCTAssertEqual(font, AparteTypography.headingFont(level: 2))
+        XCTAssertEqual(MarkdownCodec.markdown(from: rendered), markdown)
+    }
+
     func testSupportedMarkdownRendersAndReturnsCleanMarkdown() {
         let markdown = """
         # A heading

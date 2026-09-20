@@ -4,6 +4,8 @@ import AparteCore
 @MainActor
 final class FormattingBar: NSVisualEffectView, NSPopoverDelegate {
     private weak var editor: EditorTextView?
+    private weak var heading1Button: NSButton?
+    private weak var heading2Button: NSButton?
     private weak var linkButton: NSButton?
     private weak var linkField: NSTextField?
     private weak var linkError: NSTextField?
@@ -12,7 +14,7 @@ final class FormattingBar: NSVisualEffectView, NSPopoverDelegate {
 
     init(editor: EditorTextView) {
         self.editor = editor
-        super.init(frame: NSRect(x: 0, y: 0, width: 286, height: 38))
+        super.init(frame: NSRect(x: 0, y: 0, width: 316, height: 38))
         material = .menu
         blendingMode = .withinWindow
         state = .active
@@ -41,7 +43,12 @@ final class FormattingBar: NSVisualEffectView, NSPopoverDelegate {
         stack.addArrangedSubview(italic)
         stack.addArrangedSubview(underline)
         stack.addArrangedSubview(separator())
-        stack.addArrangedSubview(button("H1", help: "Heading") { editor.applyHeading(level: 1) })
+        let heading1 = button("H1", help: "Heading") { editor.applyHeading(level: 1) }
+        let heading2 = button("H2", help: "Heading 2") { editor.applyHeading(level: 2) }
+        heading1Button = heading1
+        heading2Button = heading2
+        stack.addArrangedSubview(heading1)
+        stack.addArrangedSubview(heading2)
         stack.addArrangedSubview(button("•", help: "Bulleted list") { editor.applyList(.unordered) })
         stack.addArrangedSubview(button("1.", help: "Numbered list") { editor.applyList(.ordered) })
         stack.addArrangedSubview(separator())
@@ -178,6 +185,25 @@ final class FormattingBar: NSVisualEffectView, NSPopoverDelegate {
             }
         }
         return nil
+    }
+
+    func refresh() {
+        let level = editor?.headingLevelAtSelection()
+        setHeadingButton(heading1Button, active: level == 1)
+        setHeadingButton(heading2Button, active: level == 2)
+    }
+
+    func buttonsForRuntimeCheck() -> [NSButton] {
+        func collect(_ view: NSView) -> [NSButton] {
+            (view as? NSButton).map { [$0] } ?? view.subviews.flatMap(collect)
+        }
+        return collect(self)
+    }
+
+    private func setHeadingButton(_ button: NSButton?, active: Bool) {
+        guard let button else { return }
+        button.font = .systemFont(ofSize: 12, weight: active ? .semibold : .medium)
+        button.state = active ? .on : .off
     }
 
     func popoverDidClose(_ notification: Notification) {

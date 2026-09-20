@@ -18,6 +18,37 @@ final class AparteTypographyTests: XCTestCase {
         }
     }
 
+    func testHeadingTypeScaleKeepsLevelOneAt30AndLevelTwoAt24() {
+        XCTAssertEqual(AparteTypography.headingSize(level: 1), 30)
+        XCTAssertEqual(AparteTypography.headingSize(level: 2), 24)
+        let heading2 = AparteTypography.headingFont(level: 2)
+        XCTAssertEqual(heading2.pointSize, 24)
+        XCTAssertEqual(heading2, NSFont.systemFont(ofSize: 24, weight: .semibold))
+        XCTAssertEqual(
+            NSFontManager.shared.weight(of: heading2),
+            NSFontManager.shared.weight(of: NSFont.systemFont(ofSize: 24, weight: .semibold))
+        )
+    }
+
+    func testSwitchingHeadingLevelReplacesSizeAndStoredLevel() {
+        let text = NSMutableAttributedString(string: "Title", attributes: AparteTypography.baseAttributes)
+        let range = NSRange(location: 0, length: text.length)
+        AparteTypography.applyHeadingTypography(level: 1, to: text, range: range)
+        XCTAssertEqual(text.attribute(.aparteHeadingLevel, at: 0, effectiveRange: nil) as? Int, 1)
+        XCTAssertEqual((text.attribute(.font, at: 0, effectiveRange: nil) as? NSFont)?.pointSize, 30)
+
+        AparteTypography.applyHeadingTypography(level: 2, to: text, range: range)
+        XCTAssertEqual(text.attribute(.aparteHeadingLevel, at: 0, effectiveRange: nil) as? Int, 2)
+        let font = text.attribute(.font, at: 0, effectiveRange: nil) as! NSFont
+        XCTAssertEqual(font.pointSize, 24)
+        XCTAssertEqual(font, AparteTypography.headingFont(level: 2))
+        XCTAssertEqual(text.attribute(.aparteInlineBold, at: 0, effectiveRange: nil) as? Bool, false)
+
+        AparteTypography.applyHeadingTypography(level: 1, to: text, range: range)
+        XCTAssertEqual(text.attribute(.aparteHeadingLevel, at: 0, effectiveRange: nil) as? Int, 1)
+        XCTAssertEqual((text.attribute(.font, at: 0, effectiveRange: nil) as? NSFont)?.pointSize, 30)
+    }
+
     func testBoldHeadingIsHeavierThanTheStructuralSemibold() {
         let heading = AparteTypography.headingFont(level: 1)
         let bold = AparteTypography.font(headingLevel: 1, traits: .boldFontMask)

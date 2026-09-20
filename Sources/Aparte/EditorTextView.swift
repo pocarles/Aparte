@@ -11,6 +11,7 @@ final class EditorTextView: NSTextView {
     }
 
     @objc func makeHeading(_ sender: Any?) { applyHeading(level: 1) }
+    @objc func makeHeading2(_ sender: Any?) { applyHeading(level: 2) }
     @objc func makeBulletedList(_ sender: Any?) { applyList(.unordered) }
     @objc func makeNumberedList(_ sender: Any?) { applyList(.ordered) }
     @objc func addLink(_ sender: Any?) { onAddLink?() }
@@ -23,7 +24,8 @@ final class EditorTextView: NSTextView {
             enabled = true
         case #selector(addLink(_:)):
             enabled = selectedRange().length > 0
-        case #selector(makeHeading(_:)), #selector(makeBulletedList(_:)), #selector(makeNumberedList(_:)):
+        case #selector(makeHeading(_:)), #selector(makeHeading2(_:)),
+             #selector(makeBulletedList(_:)), #selector(makeNumberedList(_:)):
             enabled = !string.isEmpty
         default:
             return super.validateUserInterfaceItem(item)
@@ -43,8 +45,9 @@ final class EditorTextView: NSTextView {
         case #selector(toggleUnderline(_:)):
             return (attributesForCommandState()[.underlineStyle] as? Int ?? 0) != 0
         case #selector(makeHeading(_:)):
-            guard let line = lineAtSelectionStart(), let textStorage, line.length > 0 else { return false }
-            return textStorage.attribute(.aparteHeadingLevel, at: line.location, effectiveRange: nil) != nil
+            return headingLevelAtSelection() == 1
+        case #selector(makeHeading2(_:)):
+            return headingLevelAtSelection() == 2
         case #selector(makeBulletedList(_:)):
             return markerAtSelectionStart()?.kind == .unordered
         case #selector(makeNumberedList(_:)):
@@ -60,6 +63,11 @@ final class EditorTextView: NSTextView {
             return typingAttributes
         }
         return textStorage.attributes(at: range.location, effectiveRange: nil)
+    }
+
+    func headingLevelAtSelection() -> Int? {
+        guard let line = lineAtSelectionStart(), let textStorage, line.length > 0 else { return nil }
+        return textStorage.attribute(.aparteHeadingLevel, at: line.location, effectiveRange: nil) as? Int
     }
 
     private func lineAtSelectionStart() -> NSRange? {
