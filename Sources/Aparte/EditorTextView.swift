@@ -107,10 +107,55 @@ final class EditorTextView: NSTextView {
 
     override func insertNewline(_ sender: Any?) {
         guard continueListIfNeeded() else {
+            // Paragraphs are separated by spacing. Return at the end of an
+            // empty paragraph would add a row that a reload drops, so it does nothing.
+            guard !returnWouldAddEmptyRow() else { return }
             super.insertNewline(sender)
             typingAttributes = AparteTypography.baseAttributes
             return
         }
+    }
+
+    /// AppKit binds Shift-Return to `insertLineBreak:`, not to a raw key event.
+    override func insertLineBreak(_ sender: Any?) {
+        let selection = selectedRange()
+        let style = paragraphStyle(at: selection.location)
+        let lineBreak = NSAttributedString(string: "\u{2028}", attributes: [.paragraphStyle: style])
+        let selectionAfter = NSRange(location: selection.location + lineBreak.length, length: 0)
+        guard replaceText(in: selection, with: lineBreak, selecting: selectionAfter) else { return }
+        typingAttributes = attributesKeeping(style)
+    }
+
+    /// True when the caret is at the end of a paragraph that has no content and
+    /// is not a list item. A trailing newline is that empty paragraph; list
+    /// items still exit the list in place.
+    private func returnWouldAddEmptyRow() -> Bool {
+        guard let textStorage else { return false }
+        let selection = selectedRange()
+        guard selection.length == 0 else { return false }
+        let source = textStorage.string as NSString
+        guard let paragraph = paragraphRange(for: selection) else { return false }
+        let content = contentRange(of: paragraph, in: source)
+        let atEnd = paragraph.length == 0
+            ? selection.location == paragraph.location
+            : selection.location == NSMaxRange(content)
+        guard atEnd else { return false }
+        let line = source.substring(with: content)
+        if ListContinuation.marker(in: line) != nil { return false }
+        return line.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private func paragraphStyle(at location: Int) -> NSParagraphStyle {
+        guard let textStorage, textStorage.length > 0 else { return AparteTypography.bodyParagraphStyle }
+        let index = min(max(location, 0), textStorage.length - 1)
+        return textStorage.attribute(.paragraphStyle, at: index, effectiveRange: nil) as? NSParagraphStyle
+            ?? AparteTypography.bodyParagraphStyle
+    }
+
+    private func attributesKeeping(_ style: NSParagraphStyle) -> [NSAttributedString.Key: Any] {
+        var attributes = typingAttributes
+        attributes[.paragraphStyle] = style
+        return attributes
     }
 
     override func deleteBackward(_ sender: Any?) {
@@ -483,6 +528,42 @@ final class EditorTextView: NSTextView {
         setSelectedRange(selection)
         didChangeText()
         return true
+    }
+
+    /// Attribute-only. Runs from the text-change notification, which AppKit
+    /// still groups with the edit, so it adds no undo step of its own.
+    /// The edited range comes from our own observer. NSTextView's editing
+    /// callback is a different, private method, and overriding the deprecated
+    /// notification selector would hide it from anything that does send it.
+    private var isApplyingStructuralSpacing = false
+    private var pendingEditedRange: NSRange?
+    private var observesTextStorage = false
+
+    /// Called once, while the view is being set up, before any edit arrives.
+    func beginObservingEdits() {
+        guard !observesTextStorage, let textStorage else { return }
+        observesTextStorage = true
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(recordEditedRange(_:)),
+            name: NSTextStorage.didProcessEditingNotification,
+            object: textStorage
+        )
+    }
+
+    @objc private func recordEditedRange(_ notification: Notification) {
+        guard !isApplyingStructuralSpacing, let storage = notification.object as? NSTextStorage,
+              storage.editedMask.contains(.editedCharacters) else { return }
+        pendingEditedRange = storage.editedRange
+    }
+
+    func applyStructuralSpacingIfNeeded() {
+        guard !isApplyingStructuralSpacing, let textStorage, textStorage.length > 0 else { return }
+        let edited = pendingEditedRange
+        pendingEditedRange = nil
+        isApplyingStructuralSpacing = true
+        ParagraphFormatting.applyStructuralSpacing(to: textStorage, edited: edited)
+        isApplyingStructuralSpacing = false
     }
 
     private func continueListIfNeeded() -> Bool {

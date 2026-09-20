@@ -2,6 +2,16 @@
 
 All notable changes appear here. The project follows semantic versioning.
 
+## Unreleased
+
+- Paragraph spacing comes from the document's structure, so the gap after a list is the same while typing and after the pad reloads.
+- A list typed by hand ("- item") is spaced as a list. Wrapped list lines align under the item's text.
+- The text column stays about 620 points wide on a wide window instead of stretching with it.
+- Shift-Return inserts a line break inside the paragraph. Bold, italic, underline, and links that cross it stay intact when the pad reloads.
+- A narrow window keeps the text column the proportional margin used to give. Only a wide window caps the column at about 620 points.
+- Return at the end of an empty paragraph no longer adds a blank row.
+- Snapshot, in the pad footer, copies the whole pad as an image, including text scrolled out of view.
+
 ## 1.5.0 - 2026-09-13
 
 - The shortcut recorder refuses system-wide chords such as Command-Q, Command-C, Command-Tab, and Command-Space, which would otherwise stop working in every app.

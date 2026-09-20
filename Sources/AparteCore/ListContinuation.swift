@@ -21,13 +21,12 @@ public enum ListContinuation {
     }
 
     /// Returns the visible marker at the beginning of `line`, if any.
+    /// Trailing whitespace belongs to the prefix, matching the ordered parser,
+    /// so a wrapped line indents under the item text rather than the marker.
     public static func marker(in line: String) -> Marker? {
-        if line.hasPrefix("• ") {
-            return Marker(kind: .unordered, prefix: "• ")
-        }
-
-        for prefix in ["- ", "* ", "+ "] where line.hasPrefix(prefix) {
-            return Marker(kind: .unordered, prefix: prefix)
+        let bullets = ["• ", "- ", "* ", "+ "]
+        if let bullet = bullets.first(where: { line.hasPrefix($0) }) {
+            return Marker(kind: .unordered, prefix: prefixConsumingWhitespace(in: line, from: bullet.endIndex))
         }
 
         var digits = ""
@@ -45,18 +44,23 @@ public enum ListContinuation {
               line[whitespaceStart].isWhitespace else {
             return nil
         }
-
-        var prefixEnd = line.index(after: whitespaceStart)
-        while prefixEnd < line.endIndex, line[prefixEnd].isWhitespace {
-            prefixEnd = line.index(after: prefixEnd)
-        }
+        let prefix = prefixConsumingWhitespace(in: line, from: line.index(after: whitespaceStart))
 
         guard let number = parsedNumber(digits) else { return nil }
         return Marker(
             kind: .ordered,
             number: number,
-            prefix: String(line[..<prefixEnd])
+            prefix: prefix
         )
+    }
+
+    /// `from` is the first character after the required marker whitespace.
+    private static func prefixConsumingWhitespace(in line: String, from start: String.Index) -> String {
+        var end = start
+        while end < line.endIndex, line[end].isWhitespace {
+            end = line.index(after: end)
+        }
+        return String(line[..<end])
     }
 
     public static func isEmptyItem(in line: String, marker: Marker) -> Bool {

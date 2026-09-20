@@ -72,18 +72,35 @@ public enum AparteTypography {
         }
     }
 
+    /// Gap after a paragraph, and after the last item of a list. Item-to-item
+    /// gaps use `listItemSpacing` instead; which one applies is decided from
+    /// the document, not stored on the paragraph when it is typed.
+    public static let paragraphSpacing: CGFloat = 18
+    public static let listItemSpacing: CGFloat = 5
+
     public static var bodyParagraphStyle: NSParagraphStyle {
+        paragraphStyle(spacing: paragraphSpacing, headIndent: 0)
+    }
+
+    public static var listParagraphStyle: NSParagraphStyle {
+        paragraphStyle(spacing: listItemSpacing, headIndent: 0)
+    }
+
+    /// `headIndent` hangs wrapped lines under the item text. The caller measures
+    /// the marker prefix; a fixed indent would be wrong for "10. ".
+    public static func paragraphStyle(spacing: CGFloat, headIndent: CGFloat) -> NSParagraphStyle {
         let style = NSMutableParagraphStyle()
         style.lineSpacing = 5
-        style.paragraphSpacing = 30
+        style.paragraphSpacing = spacing
+        style.firstLineHeadIndent = 0
+        style.headIndent = headIndent
         style.lineBreakMode = .byWordWrapping
         return style
     }
 
-    public static var listParagraphStyle: NSParagraphStyle {
-        let style = bodyParagraphStyle.mutableCopy() as! NSMutableParagraphStyle
-        style.paragraphSpacing = 5
-        return style
+    /// Width of `prefix` in the body font, rounded up so the wrap clears the marker.
+    public static func markerIndent(for prefix: String) -> CGFloat {
+        ceil((prefix as NSString).size(withAttributes: [.font: bodyFont]).width)
     }
 
     public static var baseAttributes: [NSAttributedString.Key: Any] {

@@ -194,7 +194,7 @@ final class MarkdownCodecTests: XCTestCase {
         XCTAssertEqual(MarkdownCodec.markdown(from: rendered), canonical)
         XCTAssertEqual(MarkdownCodec.markdown(from: MarkdownCodec.render(canonical)), canonical)
         let style = rendered.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle
-        XCTAssertEqual(style?.paragraphSpacing, 30)
+        XCTAssertEqual(style?.paragraphSpacing, AparteTypography.paragraphSpacing)
     }
 
     func testNumberedListsKeepTheirStartingNumber() {
@@ -206,10 +206,122 @@ final class MarkdownCodecTests: XCTestCase {
         for markdown in ["- First\n- Second", "1. First\n2. Second"] {
             let rendered = MarkdownCodec.render(markdown)
             let secondItem = (rendered.string as NSString).range(of: "Second")
-            for location in [0, secondItem.location] {
-                let style = rendered.attribute(.paragraphStyle, at: location, effectiveRange: nil) as? NSParagraphStyle
-                XCTAssertEqual(style?.paragraphSpacing, 5)
+            let first = rendered.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle
+            let last = rendered.attribute(.paragraphStyle, at: secondItem.location, effectiveRange: nil) as? NSParagraphStyle
+            XCTAssertEqual(first?.paragraphSpacing, AparteTypography.listItemSpacing)
+            // The last item is followed by a paragraph gap, not another item.
+            XCTAssertEqual(last?.paragraphSpacing, AparteTypography.paragraphSpacing)
+        }
+    }
+
+    func testInlineFormattingAcrossASoftBreakRoundTripsPerLine() {
+        func spanned(_ text: String, attributes: [NSAttributedString.Key: Any]) -> NSAttributedString {
+            var attributes = attributes
+            attributes[.font] = attributes[.font] ?? AparteTypography.bodyFont
+            attributes[.paragraphStyle] = AparteTypography.bodyParagraphStyle
+            return NSAttributedString(string: text, attributes: attributes)
+        }
+        let bold = AparteTypography.font(headingLevel: nil, traits: .boldFontMask)
+        let italic = AparteTypography.font(headingLevel: nil, traits: .italicFontMask)
+        let cases: [(NSAttributedString, String)] = [
+            (spanned("Best,\u{2028}Ada", attributes: [.font: bold]), "**Best,**  \n**Ada**"),
+            (spanned("Best,\u{2028}Ada", attributes: [.font: italic]), "*Best,*  \n*Ada*"),
+            (spanned("Best,\u{2028}Ada", attributes: [.underlineStyle: NSUnderlineStyle.single.rawValue]),
+             "<u>Best,</u>  \n<u>Ada</u>"),
+            (spanned("Best,\u{2028}Ada", attributes: [.link: URL(string: "https://example.com")!]),
+             "[Best,](https://example.com)  \n[Ada](https://example.com)"),
+        ]
+        for (source, expected) in cases {
+            let markdown = MarkdownCodec.markdown(from: source)
+            XCTAssertEqual(markdown, expected)
+            let rendered = MarkdownCodec.render(markdown)
+            XCTAssertEqual(rendered.string, "Best,\u{2028}Ada")
+            XCTAssertEqual(MarkdownCodec.markdown(from: rendered), expected)
+            for location in [0, (rendered.string as NSString).range(of: "Ada").location] {
+                let attributes = rendered.attributes(at: location, effectiveRange: nil)
+                let original = source.attributes(at: 0, effectiveRange: nil)
+                XCTAssertEqual(
+                    AparteTypography.inlineTraits(in: attributes),
+                    AparteTypography.inlineTraits(in: original)
+                )
+                if original[.link] == nil {
+                    XCTAssertEqual(attributes[.underlineStyle] as? Int, original[.underlineStyle] as? Int)
+                }
+                let link = (attributes[.link] as? URL)?.absoluteString
+                XCTAssertEqual(link, (original[.link] as? URL)?.absoluteString)
             }
         }
+    }
+
+    func testTrailingSoftBreakIsDroppedAndALoneOneSurvives() {
+        let trailing = NSAttributedString(string: "Best,\u{2028}", attributes: AparteTypography.baseAttributes)
+        XCTAssertEqual(MarkdownCodec.markdown(from: trailing), "Best,")
+        XCTAssertEqual(MarkdownCodec.render("Best,").string, "Best,")
+        XCTAssertFalse(MarkdownCodec.markdown(from: trailing).hasSuffix("  "))
+
+        let onlyBreak = NSAttributedString(string: "\u{2028}", attributes: AparteTypography.baseAttributes)
+        XCTAssertEqual(MarkdownCodec.markdown(from: onlyBreak), "")
+        // The break is content, so it is kept. The newline after it is the
+        // same trailing newline every other non-empty block keeps.
+        XCTAssertEqual(ParagraphFormatting.editorText(from: onlyBreak).string, "\u{2028}\n")
+        XCTAssertEqual(MarkdownCodec.markdown(from: ParagraphFormatting.editorText(from: onlyBreak)), "")
+    }
+
+    func testSoftBreakInsideAListItemStaysOneBlock() {
+        func item(_ marker: String, _ body: NSAttributedString) -> NSAttributedString {
+            let text = NSMutableAttributedString(string: marker, attributes: AparteTypography.baseAttributes)
+            text.append(body)
+            return text
+        }
+        let plain = NSAttributedString(string: "foo\u{2028}bar", attributes: AparteTypography.baseAttributes)
+        for (source, markdown) in [
+            (item("• ", plain), "- foo  \nbar"),
+            (item("1. ", plain), "1. foo  \nbar"),
+        ] {
+            XCTAssertEqual(MarkdownCodec.markdown(from: source), markdown)
+            let reloaded = MarkdownCodec.render(markdown)
+            XCTAssertEqual(reloaded.string, source.string)
+            XCTAssertTrue(reloaded.string.contains("\u{2028}"))
+            XCTAssertFalse(reloaded.string.contains("  "))
+            XCTAssertEqual(ParagraphFormatting.blocks(in: reloaded).count, 1)
+        }
+
+        var body = AparteTypography.baseAttributes
+        body[.font] = AparteTypography.font(headingLevel: nil, traits: .boldFontMask)
+        body[.link] = URL(string: "https://example.com")!
+        let formatted = item("• ", NSAttributedString(string: "foo\u{2028}bar", attributes: body))
+        let markdown = MarkdownCodec.markdown(from: formatted)
+        XCTAssertEqual(markdown, "- [**foo**](https://example.com)  \n[**bar**](https://example.com)")
+        let reloaded = MarkdownCodec.render(markdown)
+        XCTAssertEqual(reloaded.string, "• foo\u{2028}bar")
+        XCTAssertFalse(reloaded.string.contains("  "))
+        XCTAssertEqual(ParagraphFormatting.blocks(in: reloaded).count, 1)
+        for word in ["foo", "bar"] {
+            let location = (reloaded.string as NSString).range(of: word).location
+            let attributes = reloaded.attributes(at: location, effectiveRange: nil)
+            XCTAssertTrue(AparteTypography.inlineTraits(in: attributes).contains(.boldFontMask))
+            XCTAssertEqual((attributes[.link] as? URL)?.absoluteString, "https://example.com")
+        }
+    }
+
+    func testHeadingTrailingSpacesDoNotSwallowTheNextLine() {
+        let rendered = MarkdownCodec.render("# Head  \nBody")
+        XCTAssertEqual(rendered.string, "Head  \nBody")
+        XCTAssertEqual(
+            rendered.attribute(.aparteHeadingLevel, at: 0, effectiveRange: nil) as? Int, 1
+        )
+        let body = (rendered.string as NSString).range(of: "Body").location
+        XCTAssertNil(rendered.attribute(.aparteHeadingLevel, at: body, effectiveRange: nil))
+        XCTAssertFalse(ParagraphFormatting.html(from: rendered).contains("<h1>Head  <br>Body</h1>"))
+        XCTAssertTrue(ParagraphFormatting.html(from: rendered).contains("<p>Body</p>"))
+    }
+
+    func testHardBreakRoundTripsAsOneParagraph() {
+        let markdown = "Best,  \nAda\n\nNext"
+        let rendered = MarkdownCodec.render(markdown)
+        XCTAssertEqual(rendered.string, "Best,\u{2028}Ada\nNext")
+        XCTAssertEqual(MarkdownCodec.markdown(from: rendered), markdown)
+        XCTAssertEqual(ParagraphFormatting.plainText(from: rendered), "Best,\nAda\n\nNext")
+        XCTAssertTrue(ParagraphFormatting.html(from: rendered).contains("<p>Best,<br>Ada</p><p>Next</p>"))
     }
 }

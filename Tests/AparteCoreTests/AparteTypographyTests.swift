@@ -30,6 +30,19 @@ final class AparteTypographyTests: XCTestCase {
         XCTAssertTrue(NSFontManager.shared.traits(of: italicHeading).contains(.italicFontMask))
     }
 
+    func testParagraphSpacingIsStructural() {
+        XCTAssertEqual(AparteTypography.paragraphSpacing, 18)
+        XCTAssertEqual(AparteTypography.listItemSpacing, 5)
+        XCTAssertEqual(AparteTypography.bodyParagraphStyle.paragraphSpacing, 18)
+        XCTAssertEqual(AparteTypography.bodyParagraphStyle.lineSpacing, 5)
+        XCTAssertEqual(AparteTypography.listParagraphStyle.paragraphSpacing, 5)
+
+        let narrow = AparteTypography.markerIndent(for: "- ")
+        let wide = AparteTypography.markerIndent(for: "10. ")
+        XCTAssertGreaterThan(narrow, 0)
+        XCTAssertGreaterThan(wide, narrow)
+    }
+
     func testInlineTraitsRoundTripThroughAttributes() {
         var attributes: [NSAttributedString.Key: Any] = [.aparteHeadingLevel: 1]
         AparteTypography.applyInlineTraits([.boldFontMask], to: &attributes)
