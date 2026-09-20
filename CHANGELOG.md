@@ -13,6 +13,7 @@ All notable changes appear here. The project follows semantic versioning.
 - A narrow window keeps the text column the proportional margin used to give. Only a wide window caps the column at about 620 points.
 - Return at the end of an empty paragraph no longer adds a blank row.
 - Snapshot, in the pad footer, copies the whole pad as an image, including text scrolled out of view.
+- The snapshot page is a cool off-white in light appearance, and a matching dark tone in dark appearance, instead of the pad's grey.
 
 ## 1.5.0 - 2026-09-13
 

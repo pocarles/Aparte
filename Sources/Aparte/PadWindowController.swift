@@ -711,6 +711,14 @@ enum PadSnapshot {
     /// Retina by default. A page taller than this in pixels drops to 1x, then fails.
     private static let maximumPixelHeight = 16_384
 
+    /// The exported page, not the pad chrome. Light is `#F3F4FF`; dark is
+    /// `#16161F`, a matching cool near-black so the page stays in the same family.
+    static let pageBackgroundColor = NSColor(name: "snapshotPage") { appearance in
+        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            ? NSColor(srgbRed: 22 / 255.0, green: 22 / 255.0, blue: 31 / 255.0, alpha: 1)
+            : NSColor(srgbRed: 243 / 255.0, green: 244 / 255.0, blue: 255 / 255.0, alpha: 1)
+    }
+
     static func render(_ text: NSAttributedString, columnWidth: CGFloat) -> Result {
         let page = ParagraphFormatting.editorText(from: text)
         guard page.length > 0 else { return .failed }
@@ -748,15 +756,16 @@ enum PadSnapshot {
         // NSImage may call this handler off the main actor, so it must not
         // capture MainActor-isolated state.
         let inset = margin
+        let pageColor = pageBackgroundColor
         let image = NSImage(size: pageSize, flipped: true) { _ in
             // Drawn in the appearance that is current when the button is pressed.
-            NSColor.windowBackgroundColor.setFill()
+            pageColor.setFill()
             NSRect(origin: .zero, size: pageSize).fill()
             manager.drawGlyphs(forGlyphRange: manager.glyphRange(for: container), at: NSPoint(x: inset, y: inset))
             return true
         }
         // The bitmap has no appearance of its own. Draw in the one that is
-        // active now, so the page matches the pad in light and in dark.
+        // active now, so the page colour and label text resolve for light and dark.
         NSApp.effectiveAppearance.performAsCurrentDrawingAppearance {
             NSGraphicsContext.saveGraphicsState()
             NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)

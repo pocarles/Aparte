@@ -787,6 +787,33 @@ enum RuntimeAcceptance {
                   && editor.selectedRange() == snapshotSelection
                   && editor.enclosingScrollView?.contentView.bounds.origin == snapshotScroll,
                   "snapshot-leaves-document-selection-and-scroll")
+
+            let pageSample = NSAttributedString(string: "A", attributes: AparteTypography.baseAttributes)
+            let sampleColor = pageSample.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor
+            check(sampleColor == .labelColor, "snapshot-text-uses-label-color")
+            let previousAppearance = NSApp.appearance
+            for (name, appearanceName, lightPage) in [
+                ("light", NSAppearance.Name.aqua, true),
+                ("dark", NSAppearance.Name.darkAqua, false),
+            ] {
+                guard let appearance = NSAppearance(named: appearanceName) else {
+                    failed.append("snapshot-page-\(name)")
+                    continue
+                }
+                NSApp.appearance = appearance
+                switch PadSnapshot.render(pageSample, columnWidth: PadWindowController.maximumTextColumn) {
+                case let .success(image):
+                    check(snapshotCornerMatchesPage(image.png, appearance: appearance),
+                          "snapshot-page-\(name)")
+                    check(snapshotTextContrastsPage(image.png, lightPage: lightPage),
+                          "snapshot-text-\(name)")
+                default:
+                    failed.append("snapshot-page-\(name)")
+                    failed.append("snapshot-text-\(name)")
+                }
+            }
+            NSApp.appearance = previousAppearance
+
             check(pad.scrollToEndForRuntimeCheck(), "long-document-scrolls-to-end")
             pad.zoomIn()
             drainRunLoop(for: 0.05)
@@ -1064,6 +1091,51 @@ enum RuntimeAcceptance {
                 NSApp.updateWindows()
             }
         }
+    }
+
+    /// Corner pixel of a snapshot PNG, compared to the page colour resolved in
+    /// `appearance`. Allows a point or two per channel for colour-space rounding.
+    /// Compare the stored 8-bit channels; converting a calibrated PNG pixel
+    /// through sRGB shifts the sample by more than that tolerance.
+    private static func snapshotCornerMatchesPage(_ png: Data, appearance: NSAppearance) -> Bool {
+        guard let rep = NSBitmapImageRep(data: png),
+              let data = rep.bitmapData, rep.bitsPerSample == 8, rep.samplesPerPixel >= 3 else { return false }
+        var expected = (0, 0, 0)
+        appearance.performAsCurrentDrawingAppearance {
+            guard let color = PadSnapshot.pageBackgroundColor.usingColorSpace(.sRGB) else { return }
+            expected = (
+                Int((color.redComponent * 255).rounded()),
+                Int((color.greenComponent * 255).rounded()),
+                Int((color.blueComponent * 255).rounded())
+            )
+        }
+        return abs(Int(data[0]) - expected.0) <= 2
+            && abs(Int(data[1]) - expected.1) <= 2
+            && abs(Int(data[2]) - expected.2) <= 2
+    }
+
+    /// Text still uses `labelColor`, so glyphs are dark on the light page and
+    /// light on the dark page. Scan for pixels that are not the page fill.
+    private static func snapshotTextContrastsPage(_ png: Data, lightPage: Bool) -> Bool {
+        guard let rep = NSBitmapImageRep(data: png),
+              let corner = rep.colorAt(x: 0, y: 0)?.usingColorSpace(.sRGB) else { return false }
+        let page = [corner.redComponent, corner.greenComponent, corner.blueComponent]
+        var luminances: [CGFloat] = []
+        let step = max(1, min(rep.pixelsWide, rep.pixelsHigh) / 64)
+        for y in Swift.stride(from: 0, to: rep.pixelsHigh, by: step) {
+            for x in Swift.stride(from: 0, to: rep.pixelsWide, by: step) {
+                guard let color = rep.colorAt(x: x, y: y)?.usingColorSpace(.sRGB) else { continue }
+                let rgb = [color.redComponent, color.greenComponent, color.blueComponent]
+                let delta = zip(rgb, page).map { abs($0.0 - $0.1) }.max() ?? 0
+                if delta > 16 / 255.0 {
+                    luminances.append(0.2126 * color.redComponent + 0.7152 * color.greenComponent + 0.0722 * color.blueComponent)
+                }
+            }
+        }
+        guard !luminances.isEmpty else { return false }
+        let mean = luminances.reduce(0, +) / CGFloat(luminances.count)
+        let pageLuma = 0.2126 * corner.redComponent + 0.7152 * corner.greenComponent + 0.0722 * corner.blueComponent
+        return lightPage ? mean < pageLuma : mean > pageLuma
     }
 
     /// On-screen width of the text column. Magnification scales document points.
