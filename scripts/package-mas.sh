@@ -60,8 +60,9 @@ if [[ "$(plutil -extract Platform xml1 -o - "$profile_plist" | /usr/bin/xmllint 
     exit 64
 fi
 if [[ "$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:com.apple.security.app-sandbox' "$profile_plist")" != "true" ]] ||
-   [[ "$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:com.apple.security.files.user-selected.read-write' "$profile_plist")" != "true" ]]; then
-    echo "The provisioning profile does not authorize Aparte's sandbox file access." >&2
+   [[ "$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:com.apple.security.files.user-selected.read-write' "$profile_plist")" != "true" ]] ||
+   [[ "$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:com.apple.security.network.client' "$profile_plist")" != "true" ]]; then
+    echo "The provisioning profile does not authorize Aparte's sandbox file access and outgoing network." >&2
     exit 64
 fi
 

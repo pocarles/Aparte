@@ -42,6 +42,7 @@ struct MenuCommand {
     static let copyPlain = Self(title: "Copy as plain text", action: #selector(AppDelegate.copyPlainText), key: "c", modifiers: [.command, .option, .shift])
     static let copyMarkdown = Self(title: "Copy as Markdown", action: #selector(AppDelegate.copyMarkdown), key: "c", modifiers: [.command, .shift])
     static let save = Self(title: "Save Markdown As…", action: #selector(AppDelegate.saveMarkdownAs), key: "s", modifiers: [.command, .shift])
+    static let send = Self(title: "Send to endpoint…", action: #selector(AppDelegate.sendToEndpoint), key: "u", modifiers: [.command, .option])
     static let clear = Self(title: "Clear pad", action: #selector(AppDelegate.clearPad), key: "\u{7f}", modifiers: [.command, .option])
     static let restore = Self(title: "Restore last cleared text", action: #selector(AppDelegate.restoreLastCleared), key: "r", modifiers: [.command, .shift])
     static let discard = Self(title: "Discard recovery copy…", action: #selector(AppDelegate.discardRecovery), key: "r", modifiers: [.command, .option, .shift])

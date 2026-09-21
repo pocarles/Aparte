@@ -2,6 +2,10 @@
 
 All notable changes appear here. The project follows semantic versioning.
 
+## Unreleased
+
+- Send to endpoint… posts the pad's Markdown, or the selection when one exists, to an https address you type. The last address that succeeded is remembered on this Mac. Plain http is accepted only for localhost.
+
 ## 1.6.0 - 2026-09-20
 
 - Paragraph spacing comes from the document's structure, so the gap after a list is the same while typing and after the pad reloads.

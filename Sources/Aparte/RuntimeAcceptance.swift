@@ -1322,6 +1322,7 @@ private final class AcceptanceOptionsTarget: NSObject, NSMenuItemValidation {
     @objc func hidePad() { pad?.hide() }
     @objc func togglePad() { }
     @objc func saveMarkdownAs() { }
+    @objc func sendToEndpoint() { }
     @objc func restoreLastCleared() { if allowRecovery { pad?.restoreLastCleared() } }
     @objc func discardRecovery() { }
 

@@ -30,7 +30,7 @@ Description:
 >
 > Format text without a permanent toolbar. Copy your writing as Markdown or save a readable Markdown file wherever you choose.
 >
-> Aparte has no account, cloud sync, analytics, advertising, or network connection. Your writing stays on your Mac.
+> Aparte has no account, cloud sync, analytics, or advertising. Your writing stays on your Mac. Send to endpoint… posts the Markdown only to an address you type, and only when you ask.
 >
 > Aparte is intentionally one pad. It is built for the thought, draft, or reply you need to write now, without turning it into another library to manage.
 
@@ -47,7 +47,7 @@ Keywords, 100 bytes maximum:
 
 ## Review notes
 
-> Aparte is a menu bar accessory and does not appear in the Dock. Click the text-cursor menu bar icon or press Option-Space to open it. If Option-Space conflicts with another app in the review environment, the menu bar icon provides the same action. No account or network connection is required. Use the system Save panel to export Markdown.
+> Aparte is a menu bar accessory and does not appear in the Dock. Click the text-cursor menu bar icon or press Option-Space to open it. If Option-Space conflicts with another app in the review environment, the menu bar icon provides the same action. No account is required. The app makes no network request unless the reviewer chooses Send to endpoint…. Use the system Save panel to export Markdown.
 
 ## Assets and choices still required
 

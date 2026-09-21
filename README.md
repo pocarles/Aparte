@@ -20,6 +20,7 @@ Read the [release notes](https://github.com/pocarles/Aparte/releases/tag/v1.6.0)
 - Dims the rest of the screen without taking over your desktop.
 - Supports headings, lists, links, bold, italic, and underline.
 - Copies formatted text, plain text, or Markdown, and saves a Markdown file where you choose.
+- Sends the pad's Markdown to an address you type, when you choose Send to endpoint….
 - Continues bullets and numbered lists when you press Return.
 - Offers an optional word and character count and text zoom.
 - Keeps one recovery copy of your last cleared draft.
@@ -27,7 +28,8 @@ Read the [release notes](https://github.com/pocarles/Aparte/releases/tag/v1.6.0)
 - Settles near zero CPU while hidden.
 
 Aparte has no account, cloud sync, analytics, or advertising. Writing stays on
-your Mac. Direct-download builds use Sparkle to check GitHub for signed updates
+your Mac. Send to endpoint… posts the Markdown only to an address you type, and
+only when you ask. Direct-download builds use Sparkle to check GitHub for signed updates
 once a day and offer Check for Updates… in the Aparte menus. Local and App Store
 builds contain no updater. See the [privacy policy](PRIVACY.md).
 
@@ -66,6 +68,7 @@ Shortcuts work while writing and while the options card is open.
 | Copy as Markdown | Command-Shift-C |
 | Copy as plain text | Command-Option-Shift-C |
 | Save Markdown As | Command-Shift-S |
+| Send to endpoint | Command-Option-U |
 | Clear pad | Command-Option-Delete |
 | Restore last cleared text | Command-Shift-R |
 | Discard recovery copy, with confirmation | Command-Option-Shift-R |
@@ -138,7 +141,7 @@ removes it without changing your current pad.
 ## Privacy
 
 Aparte stores its working Markdown document and, after Clear, one recovery copy in your macOS Application Support folder.
-It does not send the document, usage data, or diagnostics anywhere. Read the
+It never sends usage data or diagnostics. The document leaves your Mac only when you choose Send to endpoint…, and only to the address you typed. Read the
 [privacy statement](PRIVACY.md) for the complete boundary.
 
 ## Build from source
