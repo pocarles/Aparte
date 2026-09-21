@@ -46,7 +46,7 @@ final class MenuBarController: NSObject {
             parent.submenu = submenu
             menu.addItem(parent)
         }
-        [MenuCommand.copyAll, .copyPlain, .copyMarkdown, .save, .clear].forEach(add)
+        [MenuCommand.copyAll, .copyPlain, .copyMarkdown, .save, .send, .clear].forEach(add)
         menu.addItem(.separator())
         add(.counts)
         group("Text size", [MenuCommand.zoomOut, .resetZoom, .zoomIn].map { $0.item(target: target) })

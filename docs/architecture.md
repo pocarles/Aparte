@@ -63,7 +63,7 @@ Swift Package Manager builds the executable and `scripts/package-app.sh` assembl
 
 Direct builds use a separate SwiftPM scratch directory. Packaging preserves Sparkle's framework symlinks, signs each nested executable before the framework and app, and injects the feed and public key only into the direct bundle. Validators check the configuration, signatures, linkage, and runtime search path. Non-direct validators require Sparkle and all `SU*` keys to be absent.
 
-The App Store candidate is universal for Apple silicon and Intel Macs. Its entitlements enable only App Sandbox and read-write access to files chosen through a system panel. `scripts/package-mas.sh` can sign the app and installer after the correct Apple Distribution certificate, Mac Installer Distribution certificate, and provisioning profile exist. It does not upload.
+The App Store candidate is universal for Apple silicon and Intel Macs. Its entitlements enable App Sandbox, read-write access to files chosen through a system panel, and outgoing network connections for Send to endpoint…. `scripts/package-mas.sh` can sign the app and installer after the correct Apple Distribution certificate, Mac Installer Distribution certificate, and provisioning profile exist. It does not upload.
 
 ## Writing preferences and recovery
 

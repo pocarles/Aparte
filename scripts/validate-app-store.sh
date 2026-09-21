@@ -33,7 +33,8 @@ codesign --verify --deep --strict "$app_dir"
 codesign -d --entitlements :- "$app_dir" >"$entitlements_file" 2>/dev/null
 for entitlement in \
     com.apple.security.app-sandbox \
-    com.apple.security.files.user-selected.read-write
+    com.apple.security.files.user-selected.read-write \
+    com.apple.security.network.client
 do
     value="$(/usr/libexec/PlistBuddy -c "Print :$entitlement" "$entitlements_file" 2>/dev/null || true)"
     if [[ "$value" != "true" ]]; then
@@ -42,9 +43,9 @@ do
     fi
 done
 entitlement_count="$(plutil -convert xml1 -o - "$entitlements_file" | /usr/bin/xmllint --xpath 'count(/plist/dict/key)' -)"
-expected_entitlement_count=2
+expected_entitlement_count=3
 if [[ "$validation_level" == "distribution" ]]; then
-    expected_entitlement_count=4
+    expected_entitlement_count=5
 fi
 if [[ "$entitlement_count" != "$expected_entitlement_count" ]]; then
     echo "The signed app contains unexpected or missing entitlements." >&2

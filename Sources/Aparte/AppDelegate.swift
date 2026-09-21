@@ -154,6 +154,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         padController?.saveMarkdownAs()
     }
 
+    @objc func sendToEndpoint() {
+        if padController?.isVisible != true { showPad() }
+        padController?.sendToEndpoint()
+    }
+
     var shortcutDescription: String {
         guard let hotKeyController else { return "Shortcut unavailable" }
         return hotKeyController.isRegistered ? hotKeyController.shortcutDescription : "Shortcut unavailable"

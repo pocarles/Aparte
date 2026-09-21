@@ -27,6 +27,9 @@ final class PadWindowController: NSObject, NSTextViewDelegate, NSWindowDelegate 
     private weak var snapshotButton: PadActionButton?
     private let countLabel = NSTextField(labelWithString: "")
     private let defaults: UserDefaults
+    private let endpointSender: EndpointSender
+    private static let endpointDefaultsKey = "Aparte.lastEndpoint"
+    private var endpointOverlay: EndpointOverlayView?
     private let optionsMenu: () -> NSMenu
     private var zoom: CGFloat = 1
     private var optionsOverlay: OptionsOverlayView?
@@ -44,9 +47,11 @@ final class PadWindowController: NSObject, NSTextViewDelegate, NSWindowDelegate 
     }
 
     init(document: DocumentController, defaults: UserDefaults = .standard,
+         endpointSender: EndpointSender = EndpointSender(),
          optionsMenu: @escaping () -> NSMenu = { MenuBarController.makeOptionsMenu(target: NSApp.delegate as? AppDelegate) }) {
         self.optionsMenu = optionsMenu
         self.defaults = defaults
+        self.endpointSender = endpointSender
         self.document = document
         self.panel = ApartePanel(
             contentRect: NSRect(origin: .zero, size: Self.preferredSize),
@@ -83,6 +88,7 @@ final class PadWindowController: NSObject, NSTextViewDelegate, NSWindowDelegate 
     func hide() {
         resetActionButtons()
         formattingBar.closeLinkPopover()
+        closeEndpointOverlay()
         closeOptions()
         formattingBar.isHidden = true
         // Ordering the pad out while a sheet is attached would orphan the sheet.
@@ -145,12 +151,14 @@ final class PadWindowController: NSObject, NSTextViewDelegate, NSWindowDelegate 
     func toggleOptions() {
         guard !isOptionsMenuOpen else { closeOptions(); return }
         formattingBar.closeLinkPopover()
+        closeEndpointOverlay()
         presentOptions(optionsMenu())
     }
 
     func dismissTransientUI() -> Bool {
         if isOptionsMenuOpen { closeOptions(); return true }
         if formattingBar.isShowingLink { formattingBar.closeLinkPopover(); return true }
+        if endpointOverlay != nil { closeEndpointOverlay(); return true }
         return false
     }
 
@@ -160,6 +168,7 @@ final class PadWindowController: NSObject, NSTextViewDelegate, NSWindowDelegate 
     }
 
     func presentOptions(_ menu: NSMenu) {
+        closeEndpointOverlay()
         closeOptions()
         let overlay = OptionsOverlayView(menu: menu)
         overlay.frame = rootView.bounds
@@ -190,6 +199,7 @@ final class PadWindowController: NSObject, NSTextViewDelegate, NSWindowDelegate 
     }
 
     var optionsOverlayForRuntimeCheck: OptionsOverlayView? { optionsOverlay }
+    var endpointOverlayForRuntimeCheck: EndpointOverlayView? { endpointOverlay }
     var linkIsVisibleForRuntimeCheck: Bool { formattingBar.isShowingLink }
 
     @objc func clearPad() {
@@ -275,13 +285,29 @@ final class PadWindowController: NSObject, NSTextViewDelegate, NSWindowDelegate 
         let source = editor.string as NSString
         let selected = selection.length > 0 && NSMaxRange(selection) <= source.length
         let text = selected ? source.substring(with: selection) : editor.string
+        let words = Self.wordCount(in: text)
+        let prefix = selected ? "Selection: " : ""
+        countLabel.stringValue = "\(prefix)\(words) \(words == 1 ? "word" : "words") · \(text.count) \(text.count == 1 ? "character" : "characters")"
+        countLabel.toolTip = "Characters include spaces and line breaks. Select text to count only that passage."
+    }
+
+    static func wordCount(in text: String) -> Int {
         var words = 0
         text.enumerateSubstrings(in: text.startIndex..<text.endIndex, options: [.byWords, .substringNotRequired]) {
             _, _, _, _ in words += 1
         }
-        let prefix = selected ? "Selection: " : ""
-        countLabel.stringValue = "\(prefix)\(words) \(words == 1 ? "word" : "words") · \(text.count) \(text.count == 1 ? "character" : "characters")"
-        countLabel.toolTip = "Characters include spaces and line breaks. Select text to count only that passage."
+        return words
+    }
+
+    /// Plain-text words in whatever `markdownToSend` will post.
+    private func endpointContentSummary() -> String {
+        let selection = editor.selectedRange()
+        let source = editor.string as NSString
+        let selected = selection.length > 0 && NSMaxRange(selection) <= source.length
+        let text = selected ? source.substring(with: selection) : editor.string
+        let words = Self.wordCount(in: text)
+        let scope = selected ? "Selection" : "Whole pad"
+        return "\(scope) · \(words) \(words == 1 ? "word" : "words")"
     }
 
     var hasRecovery: Bool { document.hasRecovery }
@@ -354,6 +380,91 @@ final class PadWindowController: NSObject, NSTextViewDelegate, NSWindowDelegate 
                 }
             }
         }
+    }
+
+    func sendToEndpoint() {
+        panel.makeFirstResponder(editor)
+        guard let markdown = markdownToSend() else {
+            saveButton?.acknowledge("Empty", symbol: "exclamationmark.circle", detail: "The pad is empty. Nothing was sent.")
+            return
+        }
+        presentEndpointOverlay(markdown: markdown)
+    }
+
+    /// Selection when one exists, otherwise the whole pad. Blank text sends nothing.
+    private func markdownToSend() -> String? {
+        guard let textStorage = editor.textStorage, textStorage.length > 0 else { return nil }
+        let range = editor.selectedRange().length > 0
+            ? editor.selectedRange()
+            : NSRange(location: 0, length: textStorage.length)
+        guard NSMaxRange(range) <= textStorage.length else { return nil }
+        let attributed = ParagraphFormatting.copyText(from: textStorage, range: range)
+        let markdown = MarkdownCodec.markdown(from: attributed)
+        guard !markdown.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        return markdown
+    }
+
+    private func presentEndpointOverlay(markdown: String) {
+        closeOptions()
+        closeEndpointOverlay()
+        let overlay = EndpointOverlayView(
+            address: defaults.string(forKey: Self.endpointDefaultsKey) ?? "",
+            summary: endpointContentSummary()
+        )
+        overlay.frame = rootView.bounds
+        overlay.autoresizingMask = [.width, .height]
+        overlay.onCancel = { [weak self] in self?.closeEndpointOverlay() }
+        overlay.onSubmit = { [weak self] text in self?.submitEndpoint(text, markdown: markdown) }
+        endpointOverlay = overlay
+        formattingBar.isHidden = true
+        rootView.addSubview(overlay)
+        rootView.optionsAccessibilityView = overlay
+        NSAccessibility.post(element: panel, notification: .layoutChanged)
+        rootView.layoutSubtreeIfNeeded()
+        panel.makeFirstResponder(overlay.addressField)
+        overlay.addressField.selectText(nil)
+    }
+
+    private func submitEndpoint(_ text: String, markdown: String) {
+        guard let overlay = endpointOverlay else { return }
+        switch EndpointURLValidator.validate(text) {
+        case let .failure(error):
+            overlay.showError(error.localizedDescription)
+            NSSound.beep()
+        case let .success(url):
+            closeEndpointOverlay()
+            let sender = endpointSender
+            let host = url.host ?? url.absoluteString
+            let payload = EndpointPayload(
+                markdown: markdown,
+                title: MarkdownFileExporter.suggestedBaseName(for: markdown)
+            )
+            Task { @MainActor in
+                // send is nonisolated, so this await leaves the main actor until it returns.
+                let result = await sender.send(payload, to: url)
+                switch result {
+                case .success:
+                    self.defaults.set(url.absoluteString, forKey: Self.endpointDefaultsKey)
+                    self.saveButton?.acknowledge("Sent", symbol: "checkmark", detail: "Sent to \(host).")
+                case let .failure(error):
+                    self.saveButton?.acknowledge(
+                        "Failed",
+                        symbol: "exclamationmark.circle",
+                        detail: error.localizedDescription
+                    )
+                    NSSound.beep()
+                }
+            }
+        }
+    }
+
+    private func closeEndpointOverlay() {
+        guard let overlay = endpointOverlay else { return }
+        endpointOverlay = nil
+        overlay.removeFromSuperview()
+        rootView.optionsAccessibilityView = nil
+        NSAccessibility.post(element: panel, notification: .layoutChanged)
+        panel.makeFirstResponder(editor)
     }
 
     /// Renders the whole document, including text scrolled out of view, and
@@ -569,9 +680,12 @@ final class PadWindowController: NSObject, NSTextViewDelegate, NSWindowDelegate 
         self.copyButton = copyAllButton
 
         let saveButton = PadActionButton(title: "Save", symbol: "arrow.down.doc",
-                                         feedbackTitles: ["Saved", "Empty", "Failed"],
-                                         toolTip: "Choose where to save a Markdown file",
+                                         feedbackTitles: ["Saved", "Empty", "Failed", "Sent"],
+                                         toolTip: "Choose where to save a Markdown file. Hold for Send to endpoint.",
                                          target: self, action: #selector(saveMarkdownAs))
+        let saveMenu = NSMenu()
+        saveMenu.addItem(MenuCommand.send.item(target: NSApp.delegate as? NSObject))
+        saveButton.menu = saveMenu
         saveButton.setAccessibilityLabel("Save Markdown")
         rootView.addSubview(saveButton)
         self.saveButton = saveButton

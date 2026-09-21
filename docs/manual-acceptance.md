@@ -59,6 +59,12 @@ On September 3, 2026, the locally prepared sandboxed candidate opened with a sep
 - [ ] Command-C on a selection, the footer Copy button, and plain-text copy produce the same paragraph boundaries. Copying, pasting back, saving, and reopening does not accumulate extra blank lines.
 - [ ] Save and Save Markdown As open a system Save panel with a useful filename derived from the first non-empty line.
 - [ ] Saving writes readable Markdown to a user-selected folder and handles overwrite confirmation through the system panel.
+- [ ] Command-Option-U, or Send to endpoint… from the File menu, the status menu, or the Save button's menu, opens an address field on the Save button. The field shows the last address that sent successfully.
+- [ ] A successful send shows "Sent" on the Save button, naming the host, and the address is remembered. A selection sends only that selection; otherwise the whole pad is sent. An empty pad shows "Empty" and sends nothing.
+- [ ] An address that is not a URL stays in the field with a short error and sends nothing.
+- [ ] A plain http address for a host other than localhost is rejected and sends nothing. `http://localhost` is accepted.
+- [ ] An endpoint that answers 404 shows "Failed" on the Save button with the status, and the address is not remembered.
+- [ ] An unreachable host shows "Failed" with the connection error. Nothing is sent again unless you ask.
 - [ ] Copy, Save, Clear, and every abbreviated formatting control explain their action on hover.
 
 ## Persistence and appearance

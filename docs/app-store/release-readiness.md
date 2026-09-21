@@ -5,7 +5,7 @@ Version 1.2.1, build 8, dated 2026-09-11, is prepared locally. It has not been s
 ## Ready in the repository
 
 - The bundle has a stable identifier, version, build number, productivity category, copyright, encryption declaration, and icon.
-- The App Store candidate enables App Sandbox and only user-selected read-write file access.
+- The App Store candidate enables App Sandbox, user-selected read-write file access, and outgoing network client access for Send to endpoint….
 - Save uses `NSSavePanel`. The app no longer needs direct Desktop access.
 - The privacy manifest declares no tracking, collected data, or tracking domains. It declares UserDefaults with reason CA92.1 for Aparte's local preferences.
 - The App Store build is universal for Apple silicon and Intel Macs.
