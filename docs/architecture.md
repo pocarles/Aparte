@@ -47,7 +47,7 @@ The lower Save action opens the standard macOS Save panel. It derives the propos
 
 `EditorTextView` is a native rich `NSTextView` with macOS undo, spelling, selection, keyboard navigation, and text input behavior. A small contextual formatting bar appears only when the selection is non-empty. It changes the selected attributed ranges and then the document controller schedules a save.
 
-The autosave debounce uses a one-shot `DispatchWorkItem`. It is canceled and replaced on edits and does no work at idle. Dismissal and application termination force a final save.
+The autosave debounce uses a one-shot `DispatchWorkItem`. It is canceled and replaced on edits and does no work at idle. Markdown is cached until the next content or formatting change. After a successful save, a file metadata check lets an unchanged pad skip serialization and disk reads. A changed, replaced, or missing file forces the normal save path, and failed saves remain eligible for retry. Dismissal and application termination still flush pending changes.
 
 ## Privacy and dependencies
 
@@ -55,7 +55,7 @@ Local and App Store builds link only Apple system frameworks and contain no upda
 
 The direct updater uses Sparkle's scheduler for daily HTTPS checks and its standard update window. Aparte adds no polling timer. The main menu, status menu, and options card share the same Check for Updates… command and validate it against `canCheckForUpdates`. The signed GitHub feed and archive are verified before extraction. System profiling and unattended installation default to off. No writing or clipboard contents enter update requests.
 
-The privacy manifest declares no tracking, collected data, or tracking domains. It declares UserDefaults with reason CA92.1 for preferences stored by Aparte. The HTML paste importer denies every subsidiary resource request, including remote images and stylesheets.
+The privacy manifest declares no tracking, collected data, or tracking domains. It declares UserDefaults with reason CA92.1 for preferences stored by Aparte and FileTimestamp with reason C617.1 for the local document metadata used by the save cache. The HTML paste importer denies every subsidiary resource request, including remote images and stylesheets.
 
 ## Packaging
 
@@ -67,8 +67,10 @@ The App Store candidate is universal for Apple silicon and Intel Macs. Its entit
 
 ## Writing preferences and recovery
 
-The word and character count is hidden by default. It recomputes on editor text
-or selection changes only when enabled. Display zoom uses the native scroll
+The word and character count is hidden by default. Document totals are cached
+until the text changes, and selection totals are cached by text revision and
+selected range. Moving an empty caret reuses the document total. Formatting
+changes leave counts valid while invalidating cached Markdown. Display zoom uses the native scroll
 view's magnification; it does not rewrite document fonts or Markdown. These
 preferences and the selected global shortcut use local UserDefaults.
 
@@ -83,3 +85,11 @@ uses normalized editor content, with an explicit plain-text option.
 Shortcut changes register the replacement before retiring the previous hotkey.
 Launch at login uses Apple's Service Management API and reads its current status
 when Settings opens or regains focus. A single reusable, normal AppKit Settings window contains the shortcut recorder and login controls; errors stay beside their controls. Command-comma and Settings… in the application, status, and writing-options menus open the same window after hiding the pad and saving the document. Shortcut recording begins only when requested and stops when cancelled, saved, the window closes, or focus leaves it. Direct builds include an update button that uses the same updater availability and dispatch as the menus. Neither feature introduces polling or a helper process.
+
+## Endpoint response memory
+
+Send to endpoint uses a task delegate to discard response-body chunks as they
+arrive. Success is reported only after the complete transfer finishes, so a
+connection failure after successful headers still reports a failed send. The
+delegate refuses redirects and cancels its URLSession task when the Swift task
+is cancelled. No response body is retained.

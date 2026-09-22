@@ -224,10 +224,11 @@ final class EditorTextView: NSTextView {
         pasteboard.setString(plainText, forType: .string)
     }
 
-    func copyAllPreservingSelection(to pasteboard: NSPasteboard = .general) {
-        guard let textStorage, textStorage.length > 0 else { return }
+    @discardableResult
+    func copyAllPreservingSelection(to pasteboard: NSPasteboard = .general) -> Bool {
+        guard let textStorage, textStorage.length > 0 else { return false }
         let attributed = ParagraphFormatting.copyText(from: textStorage, range: NSRange(location: 0, length: textStorage.length))
-        writeToPasteboard(attributed, pasteboard: pasteboard)
+        return writeToPasteboard(attributed, pasteboard: pasteboard, verify: true)
     }
 
     func replaceAll(with attributedString: NSAttributedString) {
@@ -564,6 +565,7 @@ final class EditorTextView: NSTextView {
     private var isApplyingStructuralSpacing = false
     private var pendingEditedRange: NSRange?
     private var observesTextStorage = false
+    private(set) var characterRevision: UInt64 = 0
 
     /// Called once, while the view is being set up, before any edit arrives.
     func beginObservingEdits() {
@@ -580,6 +582,7 @@ final class EditorTextView: NSTextView {
     @objc private func recordEditedRange(_ notification: Notification) {
         guard !isApplyingStructuralSpacing, let storage = notification.object as? NSTextStorage,
               storage.editedMask.contains(.editedCharacters) else { return }
+        characterRevision &+= 1
         pendingEditedRange = storage.editedRange
     }
 
@@ -721,12 +724,21 @@ final class EditorTextView: NSTextView {
         return result
     }
 
+    @discardableResult
     private func writeToPasteboard(
         _ attributedString: NSAttributedString,
-        pasteboard: NSPasteboard
-    ) {
+        pasteboard: NSPasteboard,
+        verify: Bool = false
+    ) -> Bool {
+        let plainText = ParagraphFormatting.plainText(from: attributedString)
+        let html = ParagraphFormatting.html(from: attributedString)
+        let previousChange = pasteboard.changeCount
         pasteboard.clearContents()
-        pasteboard.setString(ParagraphFormatting.plainText(from: attributedString), forType: .string)
-        pasteboard.setString(ParagraphFormatting.html(from: attributedString), forType: .html)
+        let wrotePlainText = pasteboard.setString(plainText, forType: .string)
+        let wroteHTML = pasteboard.setString(html, forType: .html)
+        guard wrotePlainText && wroteHTML else { return false }
+        return !verify || (pasteboard.changeCount != previousChange
+            && pasteboard.string(forType: .string) == plainText
+            && pasteboard.string(forType: .html) == html)
     }
 }

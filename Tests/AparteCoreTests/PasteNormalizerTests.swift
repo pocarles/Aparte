@@ -160,6 +160,31 @@ final class PasteNormalizerTests: XCTestCase {
         XCTAssertEqual(ParagraphFormatting.plainText(from: normalized), "One\n\nTwo")
     }
 
+    func testUnicodeSoftBreakAndBlankRowsNormalizeWithoutMutatingInput() {
+        let source = NSMutableAttributedString(
+            string: "\r\n👩🏽‍💻 café\u{2028}continued\r\n \r\n\r\nLast\r\n",
+            attributes: [.font: AparteTypography.bodyFont, .underlineStyle: NSUnderlineStyle.single.rawValue]
+        )
+        let original = NSAttributedString(attributedString: source)
+
+        let normalized = PasteNormalizer.normalized(source)
+
+        XCTAssertEqual(source, original)
+        XCTAssertEqual(normalized.string, "👩🏽‍💻 café\u{2028}continued\nLast\n")
+        XCTAssertEqual(ParagraphFormatting.plainText(from: normalized), "👩🏽‍💻 café\ncontinued\n\nLast")
+        XCTAssertEqual(
+            normalized.attribute(.underlineStyle, at: 0, effectiveRange: nil) as? Int,
+            NSUnderlineStyle.single.rawValue
+        )
+        XCTAssertNil(
+            normalized.attribute(
+                .underlineStyle,
+                at: (normalized.string as NSString).range(of: "\nLast").location,
+                effectiveRange: nil
+            )
+        )
+    }
+
     func testRTFPasteboardInputPreservesBoldMeaning() throws {
         let pasteboard = NSPasteboard.withUniqueName()
         defer { pasteboard.releaseGlobally() }

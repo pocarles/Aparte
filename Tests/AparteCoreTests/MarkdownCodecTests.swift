@@ -129,6 +129,42 @@ final class MarkdownCodecTests: XCTestCase {
         XCTAssertLessThan(Date().timeIntervalSince(start), 10)
     }
 
+    func testOrdinaryProseKeepsExactTextAndBaseTypography() {
+        let samples = [
+            "A plain sentence with punctuation: yes (really), 100%.",
+            "Café naïf — déjà vu. 中文 العربية русский.",
+            "Emoji stay intact: 👩🏽‍💻 🇫🇷 🧑‍🧑‍🧒‍🧒",
+            "Characters with no Markdown meaning here: _ # + - > ) ( &.",
+        ]
+        for sample in samples {
+            let rendered = MarkdownCodec.render(sample)
+            XCTAssertEqual(rendered.string, sample)
+            XCTAssertEqual(MarkdownCodec.markdown(from: rendered), sample)
+            guard rendered.length > 0 else { continue }
+            let attributes = rendered.attributes(at: 0, effectiveRange: nil)
+            XCTAssertEqual(attributes[.font] as? NSFont, AparteTypography.bodyFont)
+            XCTAssertEqual(attributes[.foregroundColor] as? NSColor, NSColor.labelColor)
+            XCTAssertNil(attributes[.aparteHeadingLevel])
+            XCTAssertTrue(AparteTypography.inlineTraits(in: attributes).isEmpty)
+        }
+    }
+
+    func testHardBreakContentKeepsBlockMeaningAtWhitespaceEdges() {
+        let cases: [(source: String, visible: String, canonical: String)] = [
+            ("Text  \ncontinuation", "Text\u{2028}continuation", "Text  \ncontinuation"),
+            ("- item  \ncontinuation", "• item\u{2028}continuation", "- item  \ncontinuation"),
+            ("7. item  \ncontinuation", "7. item\u{2028}continuation", "7. item  \ncontinuation"),
+            ("-  \ncontinuation", "-\u{2028}continuation", "-  \ncontinuation"),
+            ("7.  \ncontinuation", "7.\u{2028}continuation", "7. continuation"),
+            ("-   \ncontinuation", "• \u{2028}continuation", "- continuation"),
+        ]
+        for item in cases {
+            let rendered = MarkdownCodec.render(item.source)
+            XCTAssertEqual(rendered.string, item.visible, item.source)
+            XCTAssertEqual(MarkdownCodec.markdown(from: rendered), item.canonical, item.source)
+        }
+    }
+
     func testMalformedDelimitersRemainLiteral() {
         for text in ["before **unfinished", "before *unfinished", "before <u>unfinished", "before [unfinished](https://example.com", "</u> alone", "****", "<u></u>", "[](https://example.com)"] {
             XCTAssertEqual(MarkdownCodec.render(text).string, text)

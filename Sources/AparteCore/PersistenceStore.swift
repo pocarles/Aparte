@@ -1,7 +1,31 @@
 import Foundation
+import Darwin
 
 public struct PersistenceStore: Sendable {
     public let fileURL: URL
+
+    /// A cheap change check, including replacements, permission changes, and
+    /// writes that restore the modification date. Only successful saves cache it.
+    public struct FileState: Equatable, Sendable {
+        let device: Int32
+        let inode: UInt64
+        let size: Int64
+        let modifiedSeconds: Int
+        let modifiedNanoseconds: Int
+        let changedSeconds: Int
+        let changedNanoseconds: Int
+    }
+
+    public var fileState: FileState? {
+        var info = stat()
+        let result = fileURL.withUnsafeFileSystemRepresentation { path in
+            path.map { stat($0, &info) } ?? -1
+        }
+        guard result == 0 else { return nil }
+        return FileState(device: info.st_dev, inode: info.st_ino, size: info.st_size,
+                         modifiedSeconds: info.st_mtimespec.tv_sec, modifiedNanoseconds: info.st_mtimespec.tv_nsec,
+                         changedSeconds: info.st_ctimespec.tv_sec, changedNanoseconds: info.st_ctimespec.tv_nsec)
+    }
 
     /// The one local recovery slot beside the document.
     public var recoveryFileURL: URL {

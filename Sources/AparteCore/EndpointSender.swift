@@ -126,6 +126,62 @@ final class EndpointRedirectRefuser: NSObject, URLSessionTaskDelegate, Sendable 
     }
 }
 
+/// One transfer, with only its continuation and task retained. URLSession delivers
+/// response data in chunks; none of those chunks become part of the saved state.
+private final class EndpointResponseDiscarder: NSObject, URLSessionDataDelegate, @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<URLResponse?, Error>?
+    private var task: URLSessionDataTask?
+    private var cancelled = false
+
+    func response(for request: URLRequest, using session: URLSession) async throws -> URLResponse? {
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                let task = session.dataTask(with: request)
+                task.delegate = self
+                lock.lock()
+                self.continuation = continuation
+                self.task = task
+                let alreadyCancelled = cancelled
+                lock.unlock()
+                if alreadyCancelled { task.cancel() }
+                else { task.resume() }
+            }
+        } onCancel: {
+            self.cancel()
+        }
+    }
+
+    private func cancel() {
+        lock.lock()
+        cancelled = true
+        let task = task
+        lock.unlock()
+        task?.cancel()
+    }
+
+    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
+        // The response body is not used. Discard each chunk but finish the transfer
+        // so a transport failure after the headers still reports a failed send.
+    }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask,
+                    willPerformHTTPRedirection response: HTTPURLResponse, newRequest request: URLRequest,
+                    completionHandler: @escaping (URLRequest?) -> Void) {
+        completionHandler(nil)
+    }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        lock.lock()
+        let continuation = continuation
+        self.continuation = nil
+        self.task = nil
+        lock.unlock()
+        if let error { continuation?.resume(throwing: error) }
+        else { continuation?.resume(returning: task.response) }
+    }
+}
+
 /// Performs one POST. Tests substitute `session`; the default never shares a cache.
 public struct EndpointSender: Sendable {
     private let session: URLSession
@@ -158,14 +214,15 @@ public struct EndpointSender: Sendable {
             return .failure(.transport(error.localizedDescription))
         }
 
-        let data: Data
         let response: URLResponse
         do {
-            (data, response) = try await session.data(for: request)
+            guard let received = try await EndpointResponseDiscarder().response(for: request, using: session) else {
+                return .failure(.transport("The endpoint did not answer."))
+            }
+            response = received
         } catch {
             return .failure(.transport(error.localizedDescription))
         }
-        _ = data
 
         guard let http = response as? HTTPURLResponse else {
             return .failure(.transport("The endpoint did not answer."))

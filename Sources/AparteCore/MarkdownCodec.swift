@@ -1,6 +1,19 @@
 import AppKit
 
 public enum MarkdownCodec {
+    private struct Block {
+        let content: String
+        let headingLevel: Int
+        let list: AparteListKind?
+        let listNumber: Int
+        let markerStemLength: Int
+    }
+
+    private struct Line {
+        let raw: String
+        let block: Block
+    }
+
     private struct InlineToken {
         let range: NSRange
         let kind: Int
@@ -9,22 +22,40 @@ public enum MarkdownCodec {
     }
 
     public static func render(_ markdown: String) -> NSAttributedString {
+        let baseAttributes = AparteTypography.baseAttributes
         let output = NSMutableAttributedString()
-        let lines = markdown.split(separator: "\n", omittingEmptySubsequences: false)
-
-        for (index, rawLine) in lines.enumerated() {
+        let lines = markdown.split(separator: "\n", omittingEmptySubsequences: false).map { rawLine in
             let raw = String(rawLine)
-            let parsed = parseBlock(raw)
+            return Line(raw: raw, block: parseBlock(raw))
+        }
+
+        for index in lines.indices {
+            let raw = lines[index].raw
+            let block = lines[index].block
             // CommonMark ends an ATX heading at its newline, so trailing spaces
             // there are not a hard break. Otherwise a break joins this line to
             // the next unless that line starts its own block. A list item's
             // continuation has no marker of its own.
-            let next = index + 1 < lines.count ? parseBlock(String(lines[index + 1])) : nil
+            let next = index + 1 < lines.count ? lines[index + 1].block : nil
             let continues = next.map { !$0.content.isEmpty && $0.headingLevel == 0 && $0.list == nil } ?? false
-            let hardBreak = parsed.headingLevel == 0 && continues && raw.hasSuffix("  ")
-            let line = hardBreak ? String(raw.dropLast(2)) : raw
-            let block = parseBlock(line)
-            let rendered = renderInline(block.content)
+            let hardBreak = block.headingLevel == 0 && continues && raw.hasSuffix("  ")
+            var content = block.content
+            var list = block.list
+            var listNumber = block.listNumber
+            if hardBreak, content.hasSuffix("  ") {
+                content.removeLast(2)
+            } else if hardBreak, list != nil {
+                // The spaces may be the list marker's required separator rather
+                // than content. If stripping them removes that separator, the
+                // original parser treated the remainder as plain text.
+                let stripped = String(raw.dropLast(2))
+                if stripped.count <= block.markerStemLength {
+                    content = stripped
+                    list = nil
+                    listNumber = 1
+                }
+            }
+            let rendered = renderInline(content, baseAttributes: baseAttributes)
 
             if block.headingLevel > 0 {
                 AparteTypography.applyHeadingTypography(
@@ -34,22 +65,23 @@ public enum MarkdownCodec {
                 )
             }
 
-            if let list = block.list {
-                let marker = list == .unordered ? "• " : "\(block.listNumber). "
-                rendered.insert(NSAttributedString(string: marker, attributes: AparteTypography.baseAttributes), at: 0)
+            if let list {
+                let marker = list == .unordered ? "• " : "\(listNumber). "
+                rendered.insert(NSAttributedString(string: marker, attributes: baseAttributes), at: 0)
             }
 
             output.append(rendered)
             if index < lines.count - 1 {
                 let separator = hardBreak ? "\u{2028}" : "\n"
-                output.append(NSAttributedString(string: separator, attributes: AparteTypography.baseAttributes))
+                output.append(NSAttributedString(string: separator, attributes: baseAttributes))
             }
         }
 
         if output.length == 0 {
-            output.append(NSAttributedString(string: "", attributes: AparteTypography.baseAttributes))
+            output.append(NSAttributedString(string: "", attributes: baseAttributes))
         }
-        return ParagraphFormatting.editorText(from: output)
+        ParagraphFormatting.normalizeEditorTextInPlace(output)
+        return output
     }
 
     public static func markdown(from attributedString: NSAttributedString) -> String {
@@ -93,25 +125,39 @@ public enum MarkdownCodec {
         return result
     }
 
-    private static func parseBlock(_ line: String) -> (
-        content: String,
-        headingLevel: Int,
-        list: AparteListKind?,
-        listNumber: Int
-    ) {
+    private static func parseBlock(_ line: String) -> Block {
         if let match = line.firstMatch(of: /^(#{1,6})\s+(.*)$/) {
-            return (String(match.2), match.1.count, nil, 1)
+            return Block(content: String(match.2), headingLevel: match.1.count, list: nil, listNumber: 1, markerStemLength: 0)
         }
         if let match = line.firstMatch(of: /^[-*+]\s+(.*)$/) {
-            return (String(match.1), 0, .unordered, 1)
+            return Block(content: String(match.1), headingLevel: 0, list: .unordered, listNumber: 1, markerStemLength: 1)
         }
         if let match = line.firstMatch(of: /^(\d+)\.\s+(.*)$/) {
-            return (String(match.2), 0, .ordered, Int(match.1) ?? 1)
+            return Block(
+                content: String(match.2),
+                headingLevel: 0,
+                list: .ordered,
+                listNumber: Int(match.1) ?? 1,
+                markerStemLength: match.1.count + 1
+            )
         }
-        return (line, 0, nil, 1)
+        return Block(content: line, headingLevel: 0, list: nil, listNumber: 1, markerStemLength: 0)
     }
 
-    private static func renderInline(_ source: String) -> NSMutableAttributedString {
+    private static func renderInline(
+        _ source: String,
+        baseAttributes: [NSAttributedString.Key: Any]
+    ) -> NSMutableAttributedString {
+        // Most pad lines are ordinary prose. Avoid building UTF-16, token,
+        // opener, and parenthesis collections when no supported delimiter can
+        // affect the result.
+        let hasDelimiter = source.utf8.contains { unit in
+            unit == 92 || unit == 42 || unit == 60 || unit == 91 || unit == 93
+        }
+        guard hasDelimiter else {
+            return NSMutableAttributedString(string: source, attributes: baseAttributes)
+        }
+
         // Pair delimiters once, then emit runs once. Unpaired delimiters remain
         // literal, without rescanning the rest of a long malformed paragraph.
         let units = Array(source.utf16)
@@ -170,13 +216,19 @@ public enum MarkdownCodec {
         let output = NSMutableAttributedString()
         var active = [Int](repeating: 0, count: 5)
         var links: [URL?] = []
+        let bodyFont = baseAttributes[.font] as? NSFont ?? AparteTypography.bodyFont
+        var fonts = [NSFont?](repeating: nil, count: 4)
         func append(_ text: String) {
             guard !text.isEmpty else { return }
-            var attributes = AparteTypography.baseAttributes
-            var traits: NSFontTraitMask = []
-            if active[1] > 0 { traits.insert(.boldFontMask) }
-            if active[2] > 0 { traits.insert(.italicFontMask) }
-            attributes[.font] = NSFontManager.shared.convert(AparteTypography.bodyFont, toHaveTrait: traits)
+            var attributes = baseAttributes
+            let fontIndex = (active[1] > 0 ? 1 : 0) | (active[2] > 0 ? 2 : 0)
+            if fonts[fontIndex] == nil {
+                var traits: NSFontTraitMask = []
+                if fontIndex & 1 != 0 { traits.insert(.boldFontMask) }
+                if fontIndex & 2 != 0 { traits.insert(.italicFontMask) }
+                fonts[fontIndex] = NSFontManager.shared.convert(bodyFont, toHaveTrait: traits)
+            }
+            attributes[.font] = fonts[fontIndex]
             if active[3] > 0 { attributes[.underlineStyle] = NSUnderlineStyle.single.rawValue }
             if let link = links.last ?? nil {
                 attributes[.link] = link
@@ -238,15 +290,19 @@ public enum MarkdownCodec {
         // paragraph contains generated formatting, escape its text so literal
         // delimiters cannot open, close, or retarget that formatting.
         var protectMarkup = ignoreBold
-        attributedString.enumerateAttributes(in: range) { attributes, _, _ in
-            let link = ((attributes[.link] as? URL)?.absoluteString ?? attributes[.link] as? String).flatMap(LinkURLNormalizer.normalize)
-            if !AparteTypography.inlineTraits(in: attributes).isEmpty
-                || (attributes[.underlineStyle] as? Int ?? 0) != 0 || link != nil {
-                protectMarkup = true
+        if !protectMarkup {
+            attributedString.enumerateAttributes(in: range) { attributes, _, stop in
+                let link = ((attributes[.link] as? URL)?.absoluteString ?? attributes[.link] as? String).flatMap(LinkURLNormalizer.normalize)
+                if !AparteTypography.inlineTraits(in: attributes).isEmpty
+                    || (attributes[.underlineStyle] as? Int ?? 0) != 0 || link != nil {
+                    protectMarkup = true
+                    stop.pointee = true
+                }
             }
         }
+        let source = attributedString.string as NSString
         attributedString.enumerateAttributes(in: range) { attributes, runRange, _ in
-            let text = (attributedString.string as NSString).substring(with: runRange)
+            let text = source.substring(with: runRange)
             let font = attributes[.font] as? NSFont ?? AparteTypography.bodyFont
             let traits = NSFontManager.shared.traits(of: font)
             let isBold = (!ignoreBold || attributes[.aparteInlineBold] as? Bool == true) && traits.contains(.boldFontMask)

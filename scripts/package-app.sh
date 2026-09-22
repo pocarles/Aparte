@@ -45,11 +45,15 @@ fi
 if [[ "$universal" == "1" ]]; then
     # Build each slice with SwiftPM, avoiding Swift Build's multi-architecture
     # compiler-probe deadlock on recent Xcode versions.
+    slice_dir="$(mktemp -d "${TMPDIR:-/tmp}/aparte-slices.XXXXXX")"
+    trap 'rm -rf "$slice_dir"' EXIT
     architecture_binaries=()
     for architecture in arm64 x86_64; do
         swift "${build_args[@]}" --arch "$architecture"
         architecture_path="$(swift "${path_args[@]}" --arch "$architecture")"
-        architecture_binaries+=("$architecture_path/Aparte")
+        # Swift Build can reuse one output path for both architectures.
+        cp "$architecture_path/Aparte" "$slice_dir/Aparte-$architecture"
+        architecture_binaries+=("$slice_dir/Aparte-$architecture")
     done
     binary_path="$project_dir/.build/Aparte-universal"
     lipo -create "${architecture_binaries[@]}" -output "$binary_path"

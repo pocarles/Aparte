@@ -230,6 +230,127 @@ final class ParagraphFormattingTests: XCTestCase {
         XCTAssertEqual(spacing(text, at: far.location), AparteTypography.paragraphSpacing)
     }
 
+    func testZeroLengthBoundaryEditSkipsBlankRowsAndMatchesFullRestyle() {
+        let text = NSMutableAttributedString(
+            string: "- One\n\n- Two\n- Three\nBody",
+            attributes: AparteTypography.baseAttributes
+        )
+        ParagraphFormatting.applyStructuralSpacing(to: text)
+
+        // Delete the remaining empty row and report the post-edit insertion
+        // point, as NSTextStorage does for a deletion.
+        let blankRow = (text.string as NSString).range(of: "\n\n")
+        text.deleteCharacters(in: NSRange(location: blankRow.location, length: 1))
+        let visited = ParagraphFormatting.applyStructuralSpacing(
+            to: text,
+            edited: NSRange(location: blankRow.location, length: 0)
+        )
+
+        XCTAssertEqual(text.string, "- One\n- Two\n- Three\nBody")
+        XCTAssertGreaterThan(visited, 0)
+        XCTAssertLessThanOrEqual(visited, 3)
+        assertLocalizedSpacingMatchesFullRestyle(text)
+
+        let atStart = NSMutableAttributedString(
+            string: "- One\n- Two",
+            attributes: AparteTypography.baseAttributes
+        )
+        ParagraphFormatting.applyStructuralSpacing(to: atStart)
+        atStart.deleteCharacters(in: NSRange(location: 0, length: 2))
+        XCTAssertGreaterThan(
+            ParagraphFormatting.applyStructuralSpacing(
+                to: atStart,
+                edited: NSRange(location: 0, length: 0)
+            ),
+            0
+        )
+        XCTAssertEqual(spacing(atStart, at: 0), AparteTypography.paragraphSpacing)
+        assertLocalizedSpacingMatchesFullRestyle(atStart)
+    }
+
+    func testLocalizedSpacingMatchesFullRestyleForSplitsMergesAndAttributeEdits() {
+        let split = NSMutableAttributedString(
+            string: "Intro\n- One and Two\nBody",
+            attributes: AparteTypography.baseAttributes
+        )
+        ParagraphFormatting.applyStructuralSpacing(to: split)
+        let splitPoint = (split.string as NSString).range(of: " and").location
+        split.replaceCharacters(in: NSRange(location: splitPoint, length: 1), with: "\n- ")
+        XCTAssertGreaterThan(
+            ParagraphFormatting.applyStructuralSpacing(
+                to: split,
+                edited: NSRange(location: splitPoint, length: 3)
+            ),
+            0
+        )
+        assertLocalizedSpacingMatchesFullRestyle(split)
+
+        let merged = NSMutableAttributedString(
+            string: "Intro\n- One\n- Two\nBody",
+            attributes: AparteTypography.baseAttributes
+        )
+        ParagraphFormatting.applyStructuralSpacing(to: merged)
+        let mergePoint = (merged.string as NSString).range(of: "\n- Two").location
+        merged.replaceCharacters(in: NSRange(location: mergePoint, length: 3), with: " ")
+        ParagraphFormatting.applyStructuralSpacing(
+            to: merged,
+            edited: NSRange(location: mergePoint, length: 0)
+        )
+        assertLocalizedSpacingMatchesFullRestyle(merged)
+
+        let attributed = NSMutableAttributedString(
+            string: "Intro\nTitle\n- One\n- Two\nBest,\u{2028}Ada",
+            attributes: AparteTypography.baseAttributes
+        )
+        ParagraphFormatting.applyStructuralSpacing(to: attributed)
+        let title = (attributed.string as NSString).range(of: "Title")
+        attributed.addAttribute(.aparteHeadingLevel, value: 2, range: title)
+        ParagraphFormatting.applyStructuralSpacing(to: attributed, edited: title)
+        assertLocalizedSpacingMatchesFullRestyle(attributed)
+    }
+
+    func testBatchedEditorNormalizationMatchesReferenceAcrossChunkBoundaries() {
+        let source = NSMutableAttributedString(
+            string: "\r\n \n",
+            attributes: AparteTypography.baseAttributes
+        )
+        for index in 0..<620 {
+            var attributes = AparteTypography.baseAttributes
+            if index.isMultiple(of: 9) {
+                attributes[.font] = NSFontManager.shared.convert(
+                    AparteTypography.bodyFont,
+                    toHaveTrait: .boldFontMask
+                )
+            }
+            let prefix = index.isMultiple(of: 5) ? "- " : ""
+            source.append(NSAttributedString(
+                string: "\(prefix)Paragraph \(index) 👩🏽‍💻\u{2028}continued",
+                attributes: attributes
+            ))
+            if index.isMultiple(of: 101) {
+                let paragraph = (source.string as NSString).paragraphRange(
+                    for: NSRange(location: source.length - 1, length: 0)
+                )
+                source.addAttribute(.aparteHeadingLevel, value: 2, range: paragraph)
+            }
+            let gap = index.isMultiple(of: 3) ? "\r\n \r\n" : index.isMultiple(of: 2) ? "\n\n" : "\n"
+            var gapAttributes = AparteTypography.baseAttributes
+            if index.isMultiple(of: 7) {
+                gapAttributes[.underlineStyle] = NSUnderlineStyle.single.rawValue
+            }
+            source.append(NSAttributedString(string: gap, attributes: gapAttributes))
+        }
+        source.append(NSAttributedString(string: " \r\n", attributes: [.font: NSFont.boldSystemFont(ofSize: 17)]))
+
+        let expected = referenceEditorText(from: source)
+        let normalized = NSMutableAttributedString(attributedString: source)
+        ParagraphFormatting.normalizeEditorTextInPlace(normalized)
+
+        XCTAssertEqual(normalized, expected)
+        XCTAssertEqual(ParagraphFormatting.blocks(in: normalized).count, 620)
+        XCTAssertTrue(normalized.string.hasSuffix("\n"))
+    }
+
     func testSoftBreakStaysInsideItsBlock() {
         let text = NSMutableAttributedString(string: "Best,\u{2028}Ada", attributes: AparteTypography.baseAttributes)
         XCTAssertEqual(ParagraphFormatting.plainText(from: text), "Best,\nAda")
@@ -258,6 +379,46 @@ final class ParagraphFormattingTests: XCTestCase {
             let next = NSMaxRange(paragraph)
             cursor = next > cursor ? next : cursor + 1
         }
+    }
+
+    private func assertLocalizedSpacingMatchesFullRestyle(
+        _ storage: NSMutableAttributedString,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let fullyRestyled = NSMutableAttributedString(attributedString: storage)
+        ParagraphFormatting.applyStructuralSpacing(to: fullyRestyled)
+        XCTAssertEqual(fullyRestyled.string, storage.string, file: file, line: line)
+        for block in ParagraphFormatting.blocks(in: storage) {
+            let local = storage.attribute(.paragraphStyle, at: block.range.location, effectiveRange: nil) as? NSParagraphStyle
+            let full = fullyRestyled.attribute(.paragraphStyle, at: block.range.location, effectiveRange: nil) as? NSParagraphStyle
+            XCTAssertEqual(local?.paragraphSpacing, full?.paragraphSpacing, file: file, line: line)
+            XCTAssertEqual(local?.headIndent, full?.headIndent, file: file, line: line)
+            XCTAssertEqual(local?.firstLineHeadIndent, full?.firstLineHeadIndent, file: file, line: line)
+            XCTAssertEqual(local?.lineSpacing, full?.lineSpacing, file: file, line: line)
+        }
+    }
+
+    private func referenceEditorText(from text: NSAttributedString) -> NSAttributedString {
+        let output = NSMutableAttributedString()
+        let blocks = ParagraphFormatting.blocks(in: text)
+        for (index, block) in blocks.enumerated() {
+            if output.length > 0 {
+                output.append(NSAttributedString(string: "\n", attributes: AparteTypography.baseAttributes))
+            }
+            let paragraph = NSMutableAttributedString(attributedString: text.attributedSubstring(from: block.range))
+            let next = index + 1 < blocks.count ? blocks[index + 1] : nil
+            paragraph.addAttribute(
+                .paragraphStyle,
+                value: ParagraphFormatting.paragraphStyle(for: block, next: next),
+                range: NSRange(location: 0, length: paragraph.length)
+            )
+            output.append(paragraph)
+        }
+        if output.length > 0, text.string.last?.isNewline == true {
+            output.append(NSAttributedString(string: "\n", attributes: AparteTypography.baseAttributes))
+        }
+        return output
     }
 
     private func spacing(_ text: NSAttributedString, at location: Int) -> CGFloat {

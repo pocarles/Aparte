@@ -8,9 +8,14 @@ final class DocumentController {
     /// The live editor storage, not a copy: nothing is duplicated per keystroke.
     private(set) var attributedText: NSAttributedString
     private(set) var lastSaveError: Error?
+    private var cachedMarkdown: String?
+    private var savedFileState: PersistenceStore.FileState?
 
     var markdown: String {
-        MarkdownCodec.markdown(from: attributedText)
+        if let cachedMarkdown { return cachedMarkdown }
+        let value = MarkdownCodec.markdown(from: attributedText)
+        cachedMarkdown = value
+        return value
     }
 
     var hasRecovery: Bool {
@@ -25,6 +30,8 @@ final class DocumentController {
 
     func textDidChange(_ attributedString: NSAttributedString) {
         attributedText = attributedString
+        cachedMarkdown = nil
+        savedFileState = nil
         scheduleSave()
     }
 
@@ -38,10 +45,13 @@ final class DocumentController {
     func saveNow() {
         saveWorkItem?.cancel()
         saveWorkItem = nil
+        if let savedFileState, savedFileState == store.fileState { return }
         do {
             try store.save(markdown)
+            savedFileState = store.fileState
             lastSaveError = nil
         } catch {
+            savedFileState = nil
             lastSaveError = error
         }
     }
