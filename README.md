@@ -11,8 +11,8 @@ local document is waiting when you come back.
 [Download the latest release](https://github.com/pocarles/Aparte/releases/latest/download/Aparte.dmg)
 or read the [product page](https://pocarles.com/aparte/).
 
-Version 1.6.0 spaces lists and headings from the document's structure, keeps the text column capped and centred on a wide pad, lets Shift-Return insert a line break that survives save and reopen, and adds Snapshot to copy the whole pad as an image. Your writing stays on your Mac.
-Read the [release notes](https://github.com/pocarles/Aparte/releases/tag/v1.6.0).
+Version 1.7.0 makes long drafts faster to edit, load, and copy, and uses less memory for large pastes. Send to endpoint… can post your Markdown to an address you choose. Your writing stays on your Mac unless you send it.
+Read the [release notes](https://github.com/pocarles/Aparte/releases/tag/v1.7.0).
 
 ## What it does
 

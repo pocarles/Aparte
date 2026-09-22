@@ -2,9 +2,14 @@
 
 All notable changes appear here. The project follows semantic versioning.
 
-## Unreleased
+## 1.7.0 - 2026-09-22
 
 - Send to endpoint… posts the pad's Markdown, or the selection when one exists, to an https address you type. The last address that succeeded is remembered on this Mac. Plain http is accepted only for localhost.
+- Long drafts do less repeated work while typing, moving the cursor, loading Markdown, and copying. Counts and saved Markdown are reused until the text changes, and spacing updates stay near the edit.
+- Saving an unchanged pad skips serialization and disk reads after checking file metadata. External changes and failed saves still trigger the normal save path.
+- Large rich pastes use less peak memory. Endpoint replies are discarded as they arrive, while connection failures, cancellation, and redirects retain their existing behavior.
+- A release-optimized 25,250-word fixture reduced typing with counts visible from 51 ms to 5 ms, Markdown rendering from 818 ms to 303 ms, and whole-pad copying from 149 ms to 49 ms. See [performance measurements](docs/performance.md) for methods and limitations.
+- Universal packaging preserves each architecture slice when Swift reuses a build output path.
 
 ## 1.6.0 - 2026-09-20
 
