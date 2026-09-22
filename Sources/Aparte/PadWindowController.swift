@@ -33,6 +33,12 @@ final class PadWindowController: NSObject, NSTextViewDelegate, NSWindowDelegate 
     private let optionsMenu: () -> NSMenu
     private var zoom: CGFloat = 1
     private var optionsOverlay: OptionsOverlayView?
+    private struct TextCounts {
+        let words: Int
+        let characters: Int
+    }
+    private var documentCounts: (revision: UInt64, value: TextCounts)?
+    private var selectionCounts: (revision: UInt64, range: NSRange, value: TextCounts)?
     var isOptionsMenuOpen: Bool { optionsOverlay != nil }
     var showsCounts: Bool { defaults.bool(forKey: "showWordCount") }
 
@@ -129,14 +135,7 @@ final class PadWindowController: NSObject, NSTextViewDelegate, NSWindowDelegate 
             copyButton?.acknowledge("Empty", symbol: "exclamationmark.circle", detail: "The pad is empty. Nothing was copied.")
             return
         }
-        let content = editor.attributedString()
-        let expectedPlainText = ParagraphFormatting.plainText(from: content)
-        let expectedHTML = ParagraphFormatting.html(from: content)
-        let previousChange = pasteboard.changeCount
-        editor.copyAllPreservingSelection(to: pasteboard)
-        if pasteboard.changeCount != previousChange
-            && pasteboard.string(forType: .string) == expectedPlainText
-            && pasteboard.string(forType: .html) == expectedHTML {
+        if editor.copyAllPreservingSelection(to: pasteboard) {
             copyButton?.acknowledge("Copied", symbol: "checkmark", detail: "Copied the whole pad.")
         } else {
             copyButton?.acknowledge("Failed", symbol: "exclamationmark.circle", detail: "The pad could not be copied. Try again.")
@@ -282,13 +281,28 @@ final class PadWindowController: NSObject, NSTextViewDelegate, NSWindowDelegate 
         countLabel.isHidden = !showsCounts
         guard showsCounts else { return }
         let selection = editor.selectedRange()
-        let source = editor.string as NSString
-        let selected = selection.length > 0 && NSMaxRange(selection) <= source.length
-        let text = selected ? source.substring(with: selection) : editor.string
-        let words = Self.wordCount(in: text)
+        let selected = selection.length > 0 && NSMaxRange(selection) <= (editor.textStorage?.length ?? 0)
+        let counts = counts(for: selected ? selection : nil)
         let prefix = selected ? "Selection: " : ""
-        countLabel.stringValue = "\(prefix)\(words) \(words == 1 ? "word" : "words") · \(text.count) \(text.count == 1 ? "character" : "characters")"
+        let label = "\(prefix)\(counts.words) \(counts.words == 1 ? "word" : "words") · \(counts.characters) \(counts.characters == 1 ? "character" : "characters")"
+        if countLabel.stringValue != label { countLabel.stringValue = label }
         countLabel.toolTip = "Characters include spaces and line breaks. Select text to count only that passage."
+    }
+
+    private func counts(for selection: NSRange?) -> TextCounts {
+        let revision = editor.characterRevision
+        if let selection, let cached = selectionCounts,
+           cached.revision == revision, cached.range == selection { return cached.value }
+        if selection == nil, let cached = documentCounts, cached.revision == revision { return cached.value }
+
+        var text = selection.map { (editor.string as NSString).substring(with: $0) } ?? editor.string
+        // NSTextStorage bridges an NSString. Convert once before Unicode counting,
+        // rather than repeatedly walking that bridge for each composed character.
+        text.makeContiguousUTF8()
+        let value = TextCounts(words: Self.wordCount(in: text), characters: text.count)
+        if let selection { selectionCounts = (revision, selection, value) }
+        else { documentCounts = (revision, value) }
+        return value
     }
 
     static func wordCount(in text: String) -> Int {
@@ -302,10 +316,8 @@ final class PadWindowController: NSObject, NSTextViewDelegate, NSWindowDelegate 
     /// Plain-text words in whatever `markdownToSend` will post.
     private func endpointContentSummary() -> String {
         let selection = editor.selectedRange()
-        let source = editor.string as NSString
-        let selected = selection.length > 0 && NSMaxRange(selection) <= source.length
-        let text = selected ? source.substring(with: selection) : editor.string
-        let words = Self.wordCount(in: text)
+        let selected = selection.length > 0 && NSMaxRange(selection) <= (editor.textStorage?.length ?? 0)
+        let words = counts(for: selected ? selection : nil).words
         let scope = selected ? "Selection" : "Whole pad"
         return "\(scope) · \(words) \(words == 1 ? "word" : "words")"
     }

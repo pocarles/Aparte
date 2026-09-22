@@ -51,6 +51,47 @@ enum RuntimeAcceptance {
         do {
             let store = try PersistenceStore(fileURL: fileURL)
             let document = try DocumentController(store: store)
+            // Save caching must not hide a failed write or a changed/missing file.
+            let cacheStore = try PersistenceStore(fileURL: root.appendingPathComponent("cache/aparte.md"))
+            let cacheDocument = try DocumentController(store: cacheStore)
+            let cacheText = NSMutableAttributedString(attributedString: MarkdownCodec.render("First note"))
+            cacheDocument.textDidChange(cacheText)
+            cacheDocument.saveNow()
+            let savedState = cacheStore.fileState
+            cacheDocument.saveNow()
+            check(cacheDocument.lastSaveError == nil && savedState == cacheStore.fileState,
+                  "unchanged-save-preserves-file")
+            let originalDate = try FileManager.default.attributesOfItem(atPath: cacheStore.fileURL.path)[.modificationDate]
+            try Data("Other note".utf8).write(to: cacheStore.fileURL)
+            if let originalDate {
+                try FileManager.default.setAttributes([.modificationDate: originalDate], ofItemAtPath: cacheStore.fileURL.path)
+            }
+            cacheDocument.saveNow()
+            let repaired = try cacheStore.load()
+            check(repaired == "First note", "cached-save-detects-external-change-with-restored-date")
+            try FileManager.default.removeItem(at: cacheStore.fileURL)
+            cacheDocument.saveNow()
+            let recreated = try cacheStore.load()
+            check(recreated == "First note", "cached-save-recreates-deleted-file")
+            cacheText.addAttribute(.font, value: NSFont.boldSystemFont(ofSize: AparteTypography.bodySize),
+                                   range: NSRange(location: 0, length: 5))
+            cacheDocument.textDidChange(cacheText)
+            check(cacheDocument.markdown == "**First** note", "markdown-cache-invalidates-on-formatting")
+            cacheDocument.saveNow()
+            let formattedSave = try cacheStore.load()
+            check(formattedSave == "**First** note", "formatted-edit-reaches-saved-file")
+
+            let blockedParent = root.appendingPathComponent("blocked-save")
+            try Data("blocking file".utf8).write(to: blockedParent)
+            let retryStore = try PersistenceStore(fileURL: blockedParent.appendingPathComponent("aparte.md"))
+            let retryDocument = try DocumentController(store: retryStore)
+            retryDocument.textDidChange(MarkdownCodec.render("Retry this note"))
+            retryDocument.saveNow()
+            check(retryDocument.lastSaveError != nil, "save-cache-retains-write-error")
+            try FileManager.default.removeItem(at: blockedParent)
+            retryDocument.saveNow()
+            let retrySave = try retryStore.load()
+            check(retryDocument.lastSaveError == nil && retrySave == "Retry this note", "save-cache-retries-failed-write")
             let defaultsName = "AparteRuntimeAcceptance-\(UUID().uuidString)"
             guard let defaults = UserDefaults(suiteName: defaultsName) else { return 1 }
             defer { defaults.removePersistentDomain(forName: defaultsName) }
@@ -216,6 +257,9 @@ enum RuntimeAcceptance {
                   && recordingHotKey.currentShortcut == candidate && recordingWindow.isVisible,
                   "settings-records-and-saves-shortcut-in-place")
             recorder.resetButton?.performClick(nil)
+            if recordingHotKey.currentShortcut != HotKeyController.defaultShortcut {
+                print("Shortcut reset: \(recorder.shortcutStatusLabel?.stringValue ?? "No status")")
+            }
             check(recordingHotKey.currentShortcut == HotKeyController.defaultShortcut, "settings-resets-shortcut-to-option-space")
             check(recorder.resetButton?.isEnabled == (recordingHotKey.currentShortcut != HotKeyController.defaultShortcut),
                   "settings-reset-disabled-at-default")
@@ -403,6 +447,26 @@ enum RuntimeAcceptance {
             check(pad.countIsVisibleForRuntimeCheck, "counter-is-laid-out-and-visible")
             editor.setSelectedRange(NSRange(location: 6, length: 5))
             check(pad.countForRuntimeCheck == "Selection: 1 word · 5 characters", "counter-follows-selection")
+            editor.replaceAll(with: NSAttributedString(string: "one two", attributes: AparteTypography.baseAttributes))
+            editor.setSelectedRange(NSRange(location: 0, length: 0))
+            check(pad.countForRuntimeCheck == "2 words · 7 characters", "counter-caches-document-total")
+            editor.setSelectedRange(NSRange(location: 4, length: 0))
+            check(pad.countForRuntimeCheck == "2 words · 7 characters", "counter-total-survives-caret-movement")
+            editor.replaceAll(with: NSAttributedString(string: "onetwoo", attributes: AparteTypography.baseAttributes))
+            check(pad.countForRuntimeCheck == "1 word · 7 characters", "counter-invalidates-on-same-length-replacement")
+            editor.undoManager?.removeAllActions()
+            editor.undoManager?.beginUndoGrouping()
+            editor.insertText(" x", replacementRange: NSRange(location: 7, length: 0))
+            editor.undoManager?.endUndoGrouping()
+            check(pad.countForRuntimeCheck == "2 words · 9 characters", "counter-updates-on-typing")
+            editor.undoManager?.undo()
+            check(pad.countForRuntimeCheck == "1 word · 7 characters", "counter-updates-on-undo")
+            editor.setSelectedRange(NSRange(location: 0, length: 7))
+            editor.toggleBold(nil)
+            check(document.markdown == "**onetwoo**" && pad.countForRuntimeCheck == "Selection: 1 word · 7 characters",
+                  "formatting-invalidates-markdown-without-changing-counts")
+            pad.setMarkdownForRuntimeCheck("Hello **world** 👩🏽‍💻")
+            editor.setSelectedRange(NSRange(location: 6, length: 5))
             let clipboard = NSPasteboard.withUniqueName()
             defer { clipboard.releaseGlobally() }
             pad.copyAllForRuntimeCheck(to: clipboard)

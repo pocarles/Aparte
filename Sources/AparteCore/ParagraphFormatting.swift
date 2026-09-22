@@ -19,24 +19,34 @@ public enum ParagraphFormatting {
             var contentsEnd = 0
             source.getParagraphStart(nil, end: &end, contentsEnd: &contentsEnd,
                                      for: NSRange(location: cursor, length: 0))
-            let range = NSRange(location: cursor, length: contentsEnd - cursor)
-            let line = source.substring(with: range)
-            // A soft break is content even when nothing follows it, so a block
-            // that is only U+2028 survives. Other blank rows stay spacing.
-            let hasContent = line.contains("\u{2028}")
-                || !line.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            if hasContent {
-                let attributes = text.attributes(at: cursor, effectiveRange: nil)
-                let inlineOnly = attributes[.aparteInlineOnly] as? Bool == true
-                result.append(Block(
-                    range: range,
-                    marker: inlineOnly ? nil : ListContinuation.marker(in: line),
-                    headingLevel: inlineOnly ? 0 : attributes[.aparteHeadingLevel] as? Int ?? 0
-                ))
+            if let block = block(in: text, source: source, start: cursor, contentsEnd: contentsEnd) {
+                result.append(block)
             }
             cursor = end
         }
         return result
+    }
+
+    private static func block(
+        in text: NSAttributedString,
+        source: NSString,
+        start: Int,
+        contentsEnd: Int
+    ) -> Block? {
+        let range = NSRange(location: start, length: contentsEnd - start)
+        let line = source.substring(with: range)
+        // A soft break is content even when nothing follows it, so a block
+        // that is only U+2028 survives. Other blank rows stay spacing.
+        let hasContent = line.contains("\u{2028}")
+            || !line.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        guard hasContent else { return nil }
+        let attributes = text.attributes(at: start, effectiveRange: nil)
+        let inlineOnly = attributes[.aparteInlineOnly] as? Bool == true
+        return Block(
+            range: range,
+            marker: inlineOnly ? nil : ListContinuation.marker(in: line),
+            headingLevel: inlineOnly ? 0 : attributes[.aparteHeadingLevel] as? Int ?? 0
+        )
     }
 
     /// Spacing follows structure. A list item keeps the tight gap only while the
@@ -89,23 +99,125 @@ public enum ParagraphFormatting {
 
     /// Empty source lines are represented by paragraph spacing, not extra rows.
     public static func editorText(from text: NSAttributedString) -> NSAttributedString {
-        let output = NSMutableAttributedString()
-        let blocks = blocks(in: text)
-        for (index, block) in blocks.enumerated() {
-            if output.length > 0 {
-                output.append(NSAttributedString(string: "\n", attributes: AparteTypography.baseAttributes))
-            }
-            let paragraph = NSMutableAttributedString(attributedString: text.attributedSubstring(from: block.range))
-            let next = index + 1 < blocks.count ? blocks[index + 1] : nil
-            paragraph.addAttribute(.paragraphStyle,
-                                   value: paragraphStyle(for: block, next: next),
-                                   range: NSRange(location: 0, length: paragraph.length))
-            output.append(paragraph)
-        }
-        if output.length > 0, text.string.last?.isNewline == true {
-            output.append(NSAttributedString(string: "\n", attributes: AparteTypography.baseAttributes))
-        }
+        let output = NSMutableAttributedString(attributedString: text)
+        normalizeEditorTextInPlace(output, paragraphStylesAreCanonical: false)
         return output
+    }
+
+    /// Canonicalizes an owned editor buffer without making another complete
+    /// attributed-string copy. Content attributes stay in place; only blank
+    /// rows, paragraph separators, and structural paragraph styles change.
+    static func normalizeEditorTextInPlace(
+        _ storage: NSMutableAttributedString,
+        paragraphStylesAreCanonical: Bool = true
+    ) {
+        let originalBlocks = blocks(in: storage)
+        guard let first = originalBlocks.first, let last = originalBlocks.last else {
+            storage.deleteCharacters(in: NSRange(location: 0, length: storage.length))
+            return
+        }
+        let keepTrailingNewline = storage.string.last?.isNewline == true
+        let baseAttributes = AparteTypography.baseAttributes
+        let separator = NSAttributedString(string: "\n", attributes: baseAttributes)
+        let empty = NSAttributedString(string: "")
+        let source = storage.string as NSString
+
+        func hasCanonicalSeparator(in range: NSRange) -> Bool {
+            guard range.length == 1, source.character(at: range.location) == 0x0A else { return false }
+            let attributes = storage.attributes(at: range.location, effectiveRange: nil)
+            guard attributes.count == baseAttributes.count else { return false }
+            return NSDictionary(dictionary: attributes).isEqual(to: baseAttributes)
+        }
+
+        func normalizeSeparator(in range: NSRange, keep: Bool = true) {
+            if keep, range.length == 1, source.character(at: range.location) == 0x0A {
+                if !hasCanonicalSeparator(in: range) {
+                    storage.setAttributes(baseAttributes, range: range)
+                }
+            } else {
+                storage.replaceCharacters(in: range, with: keep ? separator : empty)
+            }
+        }
+
+        storage.beginEditing()
+        defer { storage.endEditing() }
+
+        let trailing = NSRange(location: NSMaxRange(last.range), length: storage.length - NSMaxRange(last.range))
+        normalizeSeparator(in: trailing, keep: keepTrailingNewline)
+        var batchCompaction = false
+        if originalBlocks.count > 64 {
+            for index in 1..<originalBlocks.count {
+                let previousEnd = NSMaxRange(originalBlocks[index - 1].range)
+                let gap = NSRange(location: previousEnd, length: originalBlocks[index].range.location - previousEnd)
+                if !hasCanonicalSeparator(in: gap) {
+                    batchCompaction = true
+                    break
+                }
+            }
+        }
+        if batchCompaction {
+            // Replacing thousands of tiny gaps makes NSMutableAttributedString
+            // repeatedly rebalance its backing store. Rebuild bounded chunks
+            // instead: peak memory stays small, while the number of character
+            // mutations falls from one per paragraph to one per chunk.
+            let batchSize = 256
+            var upper = originalBlocks.count
+            while upper > 0 {
+                let lower = max(0, upper - batchSize)
+                // Release Cocoa's temporary substring objects per chunk too.
+                autoreleasepool {
+                    let replacement = NSMutableAttributedString()
+                    for index in lower..<upper {
+                        replacement.append(storage.attributedSubstring(from: originalBlocks[index].range))
+                        if index + 1 < originalBlocks.count {
+                            replacement.append(separator)
+                        }
+                    }
+                    let replacementEnd = upper < originalBlocks.count
+                        ? originalBlocks[upper].range.location
+                        : NSMaxRange(last.range)
+                    storage.replaceCharacters(
+                        in: NSRange(
+                            location: originalBlocks[lower].range.location,
+                            length: replacementEnd - originalBlocks[lower].range.location
+                        ),
+                        with: replacement
+                    )
+                }
+                upper = lower
+            }
+        } else if originalBlocks.count > 1 {
+            for index in stride(from: originalBlocks.count - 1, through: 1, by: -1) {
+                let previousEnd = NSMaxRange(originalBlocks[index - 1].range)
+                let gap = NSRange(location: previousEnd, length: originalBlocks[index].range.location - previousEnd)
+                normalizeSeparator(in: gap)
+            }
+        }
+        if first.range.location > 0 {
+            storage.deleteCharacters(in: NSRange(location: 0, length: first.range.location))
+        }
+
+        // Compaction changes only the gaps. Reuse each block's meaning and
+        // content length instead of parsing the entire normalized document again.
+        var normalizedStart = 0
+        for (index, block) in originalBlocks.enumerated() {
+            let range = NSRange(location: normalizedStart, length: block.range.length)
+            normalizedStart += block.range.length + 1
+            let next = index + 1 < originalBlocks.count ? originalBlocks[index + 1] : nil
+            let style = paragraphStyle(for: block, next: next)
+            if paragraphStylesAreCanonical,
+               paragraphStylesMatch(
+                   storage.attribute(.paragraphStyle, at: range.location, effectiveRange: nil) as? NSParagraphStyle,
+                   style
+               ) {
+                continue
+            }
+            storage.addAttribute(
+                .paragraphStyle,
+                value: style,
+                range: range
+            )
+        }
     }
 
     /// Writes structural paragraph styles onto `storage` without changing
@@ -121,22 +233,16 @@ public enum ParagraphFormatting {
         to storage: NSMutableAttributedString,
         edited: NSRange? = nil
     ) -> Int {
-        let blocks = blocks(in: storage)
-        guard !blocks.isEmpty else { return 0 }
-        let scope = edited ?? NSRange(location: 0, length: storage.length)
-        // A block owns the newline that follows it, which `range` excludes.
-        func intersects(_ block: Block) -> Bool {
-            let owned = NSMaxRange(block.range) + 1
-            return scope.location < owned && block.range.location < NSMaxRange(scope)
+        let window: (visited: [Block], lookahead: Block?)
+        if let edited {
+            window = localBlockWindow(in: storage, edited: edited)
+        } else {
+            window = (blocks(in: storage), nil)
         }
-        guard let first = blocks.firstIndex(where: intersects) else { return 0 }
-        let last = blocks.lastIndex(where: intersects) ?? first
-        let lower = max(0, first - 1)
-        let upper = min(blocks.count - 1, last + 1)
+        guard !window.visited.isEmpty else { return 0 }
 
-        for index in lower...upper {
-            let block = blocks[index]
-            let next = index + 1 < blocks.count ? blocks[index + 1] : nil
+        for (index, block) in window.visited.enumerated() {
+            let next = index + 1 < window.visited.count ? window.visited[index + 1] : window.lookahead
             let style = paragraphStyle(for: block, next: next)
             var cursor = block.range.location
             let end = NSMaxRange(block.range)
@@ -151,7 +257,99 @@ public enum ParagraphFormatting {
                 cursor = nextCursor > cursor ? nextCursor : cursor + 1
             }
         }
-        return upper - lower + 1
+        return window.visited.count
+    }
+
+    /// Finds only the edited paragraphs and their structural neighbors. The
+    /// final lookahead is metadata for styling the last visited block and is
+    /// not itself changed or included in the returned visit count.
+    private static func localBlockWindow(
+        in text: NSAttributedString,
+        edited: NSRange
+    ) -> (visited: [Block], lookahead: Block?) {
+        let source = text.string as NSString
+        guard source.length > 0 else { return ([], nil) }
+
+        let location = min(max(edited.location, 0), source.length)
+        let requestedEnd = edited.location.addingReportingOverflow(edited.length)
+        let unclampedEnd = requestedEnd.overflow ? source.length : requestedEnd.partialValue
+        let end = min(max(unclampedEnd, location), source.length)
+        let firstProbe = min(location, source.length - 1)
+        let lastProbe = edited.length == 0
+            ? firstProbe
+            : min(max(location, end - 1), source.length - 1)
+        let firstParagraph = paragraph(in: source, containing: firstProbe)
+        let lastParagraph = paragraph(in: source, containing: lastProbe)
+
+        var visited: [Block] = []
+        if let previous = previousBlock(in: text, source: source, before: firstParagraph.start) {
+            visited.append(previous)
+        }
+
+        var cursor = firstParagraph.start
+        while cursor <= lastParagraph.start, cursor < source.length {
+            let info = paragraph(in: source, containing: cursor)
+            if let current = block(in: text, source: source, start: info.start, contentsEnd: info.contentsEnd) {
+                visited.append(current)
+            }
+            guard info.end > cursor else { break }
+            cursor = info.end
+        }
+
+        var successorStart = lastParagraph.end
+        let successor = nextBlock(in: text, source: source, atOrAfter: &successorStart)
+        if let successor { visited.append(successor) }
+        let lookahead = nextBlock(in: text, source: source, atOrAfter: &successorStart)
+        return (visited, lookahead)
+    }
+
+    private static func paragraph(
+        in source: NSString,
+        containing location: Int
+    ) -> (start: Int, end: Int, contentsEnd: Int) {
+        var start = 0
+        var end = 0
+        var contentsEnd = 0
+        source.getParagraphStart(
+            &start,
+            end: &end,
+            contentsEnd: &contentsEnd,
+            for: NSRange(location: location, length: 0)
+        )
+        return (start, end, contentsEnd)
+    }
+
+    private static func previousBlock(
+        in text: NSAttributedString,
+        source: NSString,
+        before location: Int
+    ) -> Block? {
+        var cursor = location
+        while cursor > 0 {
+            let info = paragraph(in: source, containing: cursor - 1)
+            if let result = block(in: text, source: source, start: info.start, contentsEnd: info.contentsEnd) {
+                return result
+            }
+            guard info.start < cursor else { break }
+            cursor = info.start
+        }
+        return nil
+    }
+
+    private static func nextBlock(
+        in text: NSAttributedString,
+        source: NSString,
+        atOrAfter location: inout Int
+    ) -> Block? {
+        while location < source.length {
+            let info = paragraph(in: source, containing: location)
+            location = info.end
+            if let result = block(in: text, source: source, start: info.start, contentsEnd: info.contentsEnd) {
+                return result
+            }
+            guard info.end > info.start else { break }
+        }
+        return nil
     }
 
     private static func paragraphStylesMatch(_ current: NSParagraphStyle?, _ style: NSParagraphStyle) -> Bool {
@@ -180,6 +378,7 @@ public enum ParagraphFormatting {
     /// No font or size is exported: the receiving composer supplies typography.
     public static func html(from text: NSAttributedString) -> String {
         var result = "<!DOCTYPE html><html><head><meta charset=\"utf-8\"></head><body>"
+        let source = text.string as NSString
         var openList: AparteListKind?
         for block in blocks(in: text) {
             let kind = block.marker?.kind
@@ -202,17 +401,16 @@ public enum ParagraphFormatting {
             let tag = kind != nil ? "li" : block.headingLevel > 0 ? "h\(min(block.headingLevel, 6))" : "p"
             let number = kind == .ordered ? block.marker?.number : nil
             let value = number.map { " value=\"\($0)\"" } ?? ""
-            result += "<\(tag)\(value)>\(inlineHTML(text, range: range))</\(tag)>"
+            result += "<\(tag)\(value)>\(inlineHTML(text, source: source, range: range))</\(tag)>"
         }
         if let openList { result += openList == .ordered ? "</ol>" : "</ul>" }
         return result + "</body></html>"
     }
 
-    private static func inlineHTML(_ text: NSAttributedString, range: NSRange) -> String {
+    private static func inlineHTML(_ text: NSAttributedString, source: NSString, range: NSRange) -> String {
         var result = ""
         text.enumerateAttributes(in: range) { attributes, range, _ in
-            var segment = escapeHTML((text.string as NSString).substring(with: range))
-                .replacingOccurrences(of: "\u{2028}", with: "<br>")
+            var segment = escapeHTML(source.substring(with: range), replacingSoftBreaks: true)
             let traits = NSFontManager.shared.traits(of: attributes[.font] as? NSFont ?? AparteTypography.bodyFont)
             if traits.contains(.boldFontMask) { segment = "<strong>\(segment)</strong>" }
             if traits.contains(.italicFontMask) { segment = "<em>\(segment)</em>" }
@@ -224,11 +422,20 @@ public enum ParagraphFormatting {
         return result
     }
 
-    private static func escapeHTML(_ value: String) -> String {
-        value.replacingOccurrences(of: "&", with: "&amp;")
-            .replacingOccurrences(of: "<", with: "&lt;")
-            .replacingOccurrences(of: ">", with: "&gt;")
-            .replacingOccurrences(of: "\"", with: "&quot;")
-            .replacingOccurrences(of: "'", with: "&#39;")
+    private static func escapeHTML(_ value: String, replacingSoftBreaks: Bool = false) -> String {
+        var escaped = ""
+        escaped.reserveCapacity(value.utf8.count)
+        for scalar in value.unicodeScalars {
+            switch scalar {
+            case "&": escaped += "&amp;"
+            case "<": escaped += "&lt;"
+            case ">": escaped += "&gt;"
+            case "\"": escaped += "&quot;"
+            case "'": escaped += "&#39;"
+            case "\u{2028}" where replacingSoftBreaks: escaped += "<br>"
+            default: escaped.unicodeScalars.append(scalar)
+            }
+        }
+        return escaped
     }
 }

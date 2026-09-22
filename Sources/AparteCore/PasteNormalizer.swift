@@ -79,7 +79,8 @@ public enum PasteNormalizer {
             attributes[.font] = AparteTypography.bodyFont
             output.replaceCharacters(in: range, with: NSAttributedString(string: marker, attributes: attributes))
         }
-        return ParagraphFormatting.editorText(from: output)
+        ParagraphFormatting.normalizeEditorTextInPlace(output)
+        return output
     }
 
     static func nativeListPrefixLength(in line: NSString, generatedMarker: String, canonicalMarker: String) -> Int {
@@ -115,7 +116,9 @@ public enum PasteNormalizer {
             return normalized(html)
         }
         if let string = pasteboard.string(forType: .string) {
-            return ParagraphFormatting.editorText(from: NSAttributedString(string: string, attributes: AparteTypography.baseAttributes))
+            let output = NSMutableAttributedString(string: string, attributes: AparteTypography.baseAttributes)
+            ParagraphFormatting.normalizeEditorTextInPlace(output)
+            return output
         }
         return nil
     }

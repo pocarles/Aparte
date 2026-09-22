@@ -1,5 +1,119 @@
 # Performance
 
+## September 22, 2026: local performance improvements
+
+Compared the unchanged sources at `d0c9705cc815fc0fd4b76f30cac7e069589376fb`
+with the uncommitted local candidate on the same Mac, running macOS 27.0
+build 26A428. Both benchmark executables compile the real sources with Swift
+release optimization (`-O`). Fixtures use temporary documents, private defaults,
+and a private pasteboard. The installed app and the user's document were not
+changed.
+
+The candidate caches counts and serialized Markdown, limits spacing updates to
+nearby paragraphs, parses Markdown once, generates clipboard formats once,
+normalizes owned paste buffers in place, and discards unused endpoint response
+chunks. It adds no package dependency, polling timer, or background process.
+
+### Editing, loading, copying, and saving
+
+Times below are medians in milliseconds after one warm-up, with 11 measured
+iterations per operation, or seven for rendering, paste normalization, and
+whole-pad copying. The 25,250-word document contains 2,500 paragraphs, including
+headings, bold text, and links. These measure synchronous code paths; they are
+not cold-launch or key-to-screen latency measurements.
+
+| Operation, 25,250 words | Before | After |
+| --- | ---: | ---: |
+| Insert a character, counts visible | 50.898 | 4.974 |
+| Insert a character, counts hidden | 7.817 | 0.185 |
+| Move the caret, counts visible | 21.212 | 0.026 |
+| Restyle spacing after one edit | 8.152 | 0.015 |
+| Render Markdown | 818.005 | 303.046 |
+| Serialize Markdown | 66.412 | 49.938 |
+| Copy the whole pad, including clipboard verification | 148.544 | 48.657 |
+| Save again without edits | 78.912 | 0.002 |
+| Normalize mixed rich text | 69.340 | 71.773 |
+
+With a 5,050-word document, typing with counts visible fell from 10.080 to
+1.113 ms; rendering fell from 163.360 to 61.333 ms; whole-pad copying fell from
+28.947 to 9.773 ms. An unchanged save still checks file metadata, so replacing,
+deleting, or externally modifying the saved file triggers the usual save path.
+
+The mixed rich-text normalization fixture was 3.5% slower in this run. Its
+memory benefit is measured separately below; this is not a claim that every
+individual operation became faster.
+
+### Peak memory during large operations
+
+Each memory fixture runs in a separate process. Memory is the physical footprint
+reported by `vmmap`, rather than RSS or the app's disk size.
+
+| Fixture | Before peak | After peak |
+| --- | ---: | ---: |
+| Rich paste: 12,500 paragraphs, 926,390 UTF-16 units | 30.9 MiB | 19.6 MiB |
+| Endpoint: 100 MiB synthetic response | 206.4 MiB | 5.14 MiB |
+
+The large rich-paste run took 151.4 ms before and 140.3 ms after, with 36.6% less
+peak memory. Those timings are individual runs, not medians. Paragraph compaction
+uses bounded 256-paragraph buffers and releases temporary attributed strings
+between chunks.
+
+The endpoint fixture served 64 KiB chunks from a temporary localhost server.
+Both transfers completed successfully. The candidate keeps response memory
+bounded by discarding chunks, but still waits for the full transfer and reports
+late transport failures. This deliberately oversized response demonstrates
+memory behavior; it does not represent a typical endpoint response.
+
+### Hidden idle
+
+The packaged local app ran the isolated short-draft fixture with
+`--runtime-acceptance --measure-idle-only`. After `APARTE_IDLE_READY` and five
+seconds of settling, five samples two seconds apart all showed 0.0% CPU. RSS was
+114,512, 114,192, 114,144, 114,080, and 114,080 KiB. The physical footprint was
+32.1 MiB, with a 32.9 MiB peak and no network sockets. The baseline fixture was
+32.6 MiB, with a 33.2 MiB peak and 0.0% CPU in all five samples.
+
+This harness initializes acceptance-test settings and a short draft. It does
+not measure ordinary startup with Sparkle, a long editing session, or an exact
+signed release. Remeasure the shipping artifact before release.
+
+### Verification and reproduction
+
+All 111 core tests passed. The packaged runtime harness passed 325 checks and
+failed the existing `settings-resets-shortcut-to-option-space` check: macOS
+reported that another app had reserved the shortcut. The same failure occurred
+before these changes, so `make check` is not fully green on this machine.
+Strict local app signature verification and diff checks passed separately.
+The sandboxed Universal 2 candidate also passed packaging and structure
+validation, including its signatures, architectures, entitlements, and updated
+privacy manifest. Swift 6.4 reused one output path for both architecture builds;
+the packaging script now copies each slice before building the next. This was
+local validation, without installation, signing for distribution, or upload.
+
+New regression coverage includes same-length replacements, selection counts,
+undo, formatting cache invalidation, failed-save retry, external file changes,
+paragraph splits and merges, batch boundaries, late endpoint failures, redirects,
+and cancellation. A comparison of 413 Markdown fixtures against the baseline
+matched rendered text, exported Markdown, and effective attributes. Typing and
+selection counts were also exercised in an isolated native preview. Full manual
+release acceptance remains separate.
+
+Run the synthetic timing suite against the current sources:
+
+```sh
+./scripts/benchmark-performance.sh
+./scripts/benchmark-performance.sh "$PWD" --memory-paste
+```
+
+To compare another source snapshot, supply its directory as the first argument.
+The snapshot needs the `Sources` tree; the benchmark harness comes from the
+current checkout. Endpoint memory measurement accepts only a synthetic loopback
+URL, served separately:
+
+```sh
+./scripts/benchmark-performance.sh "$PWD" --memory-endpoint http://127.0.0.1:PORT/benchmark
+```
+
 ## September 11, 2026: published version 1.3.0
 
 Measured the exact published Universal 2 app, version 1.3.0, build 9, copied to

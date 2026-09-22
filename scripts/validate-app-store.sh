@@ -24,6 +24,11 @@ if [[ "$defaults_reason_count" != "1" ]]; then
     echo "The privacy manifest must declare UserDefaults with reason CA92.1." >&2
     exit 1
 fi
+timestamp_reason_count="$(plutil -convert xml1 -o - "$privacy_manifest" | /usr/bin/xmllint --xpath 'count(/plist/dict/key[.="NSPrivacyAccessedAPITypes"]/following-sibling::array[1]/dict[key[.="NSPrivacyAccessedAPIType"]/following-sibling::string[1]="NSPrivacyAccessedAPICategoryFileTimestamp"]/key[.="NSPrivacyAccessedAPITypeReasons"]/following-sibling::array[1]/string[.="C617.1"])' -)"
+if [[ "$timestamp_reason_count" != "1" ]]; then
+    echo "The privacy manifest must declare local document metadata with reason C617.1." >&2
+    exit 1
+fi
 
 [[ "$(plutil -extract CFBundleIdentifier raw -o - "$info")" == "com.pocarles.aparte" ]]
 [[ "$(plutil -extract LSApplicationCategoryType raw -o - "$info")" == "public.app-category.productivity" ]]

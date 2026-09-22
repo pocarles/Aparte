@@ -170,6 +170,75 @@ final class EndpointSenderTests: XCTestCase {
         XCTAssertFalse(message.isEmpty)
     }
 
+    func testChunkedResponseCompletesWithoutKeepingItsBody() async throws {
+        let session = streamingSession()
+        defer { session.invalidateAndCancel() }
+        EndpointStreamingStub.events.reset()
+        let result = await EndpointSender(session: session).send(samplePayload, to: sampleURL.appendingPathComponent("chunks"))
+        guard case .success = result else { return XCTFail("expected completed transfer, got \(result)") }
+        XCTAssertEqual(EndpointStreamingStub.events.chunkCount, 128)
+    }
+
+    func testTransportFailureAfterSuccessfulHeadersIsStillAFailure() async throws {
+        let session = streamingSession()
+        defer { session.invalidateAndCancel() }
+        let result = await EndpointSender(session: session).send(samplePayload, to: sampleURL.appendingPathComponent("late-failure"))
+        guard case let .failure(.transport(message)) = result else {
+            return XCTFail("must wait for the body and report its failure, got \(result)")
+        }
+        XCTAssertEqual(message, URLError(.networkConnectionLost).localizedDescription)
+    }
+
+    func testCancellingAnActiveResponseStopsTheTransfer() async throws {
+        let session = streamingSession()
+        defer { session.invalidateAndCancel() }
+        let started = expectation(description: "response started")
+        let stopped = expectation(description: "transfer cancelled")
+        EndpointStreamingStub.events.reset(started: started, stopped: stopped)
+        let sender = EndpointSender(session: session)
+        let payload = samplePayload
+        let url = sampleURL.appendingPathComponent("hang")
+        let task = Task { await sender.send(payload, to: url) }
+        await fulfillment(of: [started], timeout: 2)
+        task.cancel()
+        await fulfillment(of: [stopped], timeout: 2)
+        guard case .failure(.transport) = await task.value else { return XCTFail("cancelled send must fail") }
+    }
+
+    func testCancellationBeforeTaskCreationCompletes() async throws {
+        let session = streamingSession()
+        defer { session.invalidateAndCancel() }
+        let sender = EndpointSender(session: session)
+        let payload = samplePayload
+        let url = sampleURL.appendingPathComponent("chunks")
+        let finished = expectation(description: "cancelled task completed")
+        let task = Task {
+            withUnsafeCurrentTask { $0?.cancel() }
+            let result = await sender.send(payload, to: url)
+            finished.fulfill()
+            return result
+        }
+        await fulfillment(of: [finished], timeout: 2)
+        guard case .failure(.transport) = await task.value else { return XCTFail("pre-cancelled send must fail") }
+    }
+
+    func testRedirectIsRefusedWithoutASessionDelegate() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [EndpointRedirectStub.self]
+        EndpointRedirectStub.reset()
+        let session = URLSession(configuration: configuration)
+        defer { session.invalidateAndCancel() }
+        let result = await EndpointSender(session: session).send(samplePayload, to: sampleURL)
+        guard case .failure(.redirected) = result else { return XCTFail("redirect should be refused") }
+        XCTAssertEqual(EndpointRedirectStub.requestedURLs, [sampleURL])
+    }
+
+    private func streamingSession() -> URLSession {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [EndpointStreamingStub.self]
+        return URLSession(configuration: configuration)
+    }
+
     private var samplePayload: EndpointPayload {
         EndpointPayload(markdown: "Hello", title: "Hello", sentAt: Date(timeIntervalSince1970: 0))
     }
@@ -200,6 +269,47 @@ final class EndpointSenderTests: XCTestCase {
         EndpointStatusStub.responseStatus = status
         EndpointStatusStub.responseBody = body
         return URLSession(configuration: configuration)
+    }
+}
+
+/// Sends bounded chunks, then completes, fails late, or waits for cancellation.
+private final class EndpointStreamingStub: URLProtocol, @unchecked Sendable {
+    final class Events: @unchecked Sendable {
+        private let lock = NSLock()
+        private var chunks = 0
+        private var started: XCTestExpectation?
+        private var stopped: XCTestExpectation?
+        var chunkCount: Int { lock.withLock { chunks } }
+
+        func reset(started: XCTestExpectation? = nil, stopped: XCTestExpectation? = nil) {
+            lock.withLock { chunks = 0; self.started = started; self.stopped = stopped }
+        }
+        func start() { lock.withLock { started }?.fulfill() }
+        func stop() { lock.withLock { stopped }?.fulfill() }
+        func chunk() { lock.withLock { chunks += 1 } }
+    }
+    static let events = Events()
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        guard let url = request.url,
+              let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: "HTTP/1.1", headerFields: nil)
+        else { return }
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        if url.lastPathComponent == "hang" { Self.events.start(); return }
+        let chunk = Data(repeating: 0x61, count: 64 * 1024)
+        for _ in 0..<128 {
+            Self.events.chunk()
+            client?.urlProtocol(self, didLoad: chunk)
+        }
+        if url.lastPathComponent == "late-failure" {
+            client?.urlProtocol(self, didFailWithError: URLError(.networkConnectionLost))
+        } else {
+            client?.urlProtocolDidFinishLoading(self)
+        }
+    }
+    override func stopLoading() {
+        if request.url?.lastPathComponent == "hang" { Self.events.stop() }
     }
 }
 
