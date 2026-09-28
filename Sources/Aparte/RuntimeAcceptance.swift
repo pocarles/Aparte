@@ -1231,6 +1231,9 @@ enum RuntimeAcceptance {
             check(exactBeforeClear.first?.markdown == groupingDocument.markdown,
                   "clear-protects-exact-minor-edit")
 
+            // Exercise the legacy scrollbars used on hosted macOS runners.
+            // Their gutter appears/disappears as previews change length.
+            pad.versionPreviewForRuntimeCheck.enclosingScrollView?.scrollerStyle = .legacy
             let previewFixtures = [
                 "# Long letter\n\n" + String(repeating: "A sentence with enough words to wrap across several lines in the writing pad. ", count: 70),
                 "# A short note\n\nOnly a few words.",
@@ -1266,6 +1269,9 @@ enum RuntimeAcceptance {
                         check(ink > 100, "preview-visible-ink-pinned-\(pinned)-zoomed-\(zoomed)-rung-\(index)")
                         let container = preview.textContainer!
                         let expectedWidth = preview.enclosingScrollView!.contentView.bounds.width - preview.textContainerInset.width * 2
+                        if abs(container.containerSize.width - expectedWidth) >= 1 {
+                            print("Preview width mismatch: container=\(container.containerSize.width), expected=\(expectedWidth)")
+                        }
                         check(abs(container.containerSize.width - expectedWidth) < 1 && expectedWidth > 250,
                               "preview-width-pinned-\(pinned)-zoomed-\(zoomed)-rung-\(index)")
                         preview.scrollToEndOfDocument(nil)
