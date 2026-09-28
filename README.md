@@ -11,8 +11,8 @@ local document is waiting when you come back.
 [Download the latest release](https://github.com/pocarles/Aparte/releases/latest/download/Aparte.dmg)
 or read the [product page](https://pocarles.com/aparte/).
 
-Version 1.7.0 makes long drafts faster to edit, load, and copy, and uses less memory for large pastes. Send to endpoint… can post your Markdown to an address you choose. Your writing stays on your Mac unless you send it.
-Read the [release notes](https://github.com/pocarles/Aparte/releases/tag/v1.7.0).
+Version 1.8.0 adds a pin to keep the pad open beside other apps, with moving and resizing. Move to the left edge to preview and restore earlier versions. Small edits are grouped into fewer steps, and your writing stays on this Mac unless you send it.
+Read the [release notes](https://github.com/pocarles/Aparte/releases/tag/v1.8.0).
 
 ## What it does
 
@@ -23,7 +23,8 @@ Read the [release notes](https://github.com/pocarles/Aparte/releases/tag/v1.7.0)
 - Sends the pad's Markdown to an address you type, when you choose Send to endpoint….
 - Continues bullets and numbered lists when you press Return.
 - Offers an optional word and character count and text zoom.
-- Keeps one recovery copy of your last cleared draft.
+- Keeps one recovery copy of your last cleared draft, plus up to 20 recent versions.
+- Can stay pinned beside other apps, with a size and position you choose.
 - Autosaves one local document and restores it on relaunch.
 - Settles near zero CPU while hidden.
 
@@ -70,6 +71,7 @@ Shortcuts work while writing and while the options card is open.
 | Save Markdown As | Command-Shift-S |
 | Send to endpoint | Command-Option-U |
 | Clear pad | Command-Option-Delete |
+| Recent versions | Command-Option-Shift-V |
 | Restore last cleared text | Command-Shift-R |
 | Discard recovery copy, with confirmation | Command-Option-Shift-R |
 | Show or hide word and character count | Command-Shift-W |
@@ -138,9 +140,39 @@ from the menu. Restoring over current writing asks first and can be undone.
 Clearing a new nonempty draft replaces the recovery copy. Discard recovery copy
 removes it without changing your current pad.
 
+## Pin the pad and revisit earlier wording
+
+Click the pin at the top right to keep Aparte open while working in another app.
+The surrounding dimming disappears. Drag the top edge to move the pad, or drag
+an edge or corner to resize it. Click the pin again to return to the centered
+writing view. Escape and your global shortcut still dismiss the pad. Aparte
+remembers the pin, size, and position on this Mac.
+
+Move the mouse to the pad's left edge to reveal the marks for recent versions.
+Hover over a mark to preview that version in the pad. Move away to return to
+your current draft, with your cursor and scroll position intact. Scroll while
+over the ladder to read a longer preview. Click a mark
+to restore it and make it the newest version. Aparte saves your current draft
+in history first, and Command-Z undoes the replacement. The circle at the top
+shows the current draft.
+
+For keyboard access, choose Recovery → Recent versions… from the three-dot
+menu, or press Command-Option-Shift-V. Use Up and Down to preview, Return to
+restore, and Escape to leave history.
+
+History keeps up to 20 checkpoints. Small edits, punctuation, and formatting tweaks
+are grouped together. A new step appears after enough wording has changed, roughly
+12% of the words, capped at 40 words for longer drafts. Changes accumulate against
+the last checkpoint. Short notes need fewer changed words. Clear and restore always
+protect the exact draft. Existing similar versions are grouped in the ladder without
+deleting their saved text.
+History lives only on this Mac. Recovery → Clear version history… deletes these versions after
+confirmation and leaves the current pad and last-cleared recovery copy intact.
+New edits can create new versions.
+
 ## Privacy
 
-Aparte stores its working Markdown document and, after Clear, one recovery copy in your macOS Application Support folder.
+Aparte stores its working Markdown document and, after Clear, one recovery copy in your macOS Application Support folder. Up to 20 recent versions are stored beside them.
 It never sends usage data or diagnostics. The document leaves your Mac only when you choose Send to endpoint…, and only to the address you typed. Read the
 [privacy statement](PRIVACY.md) for the complete boundary.
 

@@ -52,7 +52,7 @@ final class MenuBarController: NSObject {
         group("Text size", [MenuCommand.zoomOut, .resetZoom, .zoomIn].map { $0.item(target: target) })
         group("Formatting", MenuCommand.formatting.map { $0.item() })
         group("Editing", MenuCommand.editing.map { $0.item() })
-        group("Recovery", [MenuCommand.restore, .discard].map { $0.item(target: target) })
+        group("Recovery", [MenuCommand.versions, .clearVersions, .restore, .discard].map { $0.item(target: target) })
         menu.addItem(.separator())
         add(.settings)
         let toggle = NSMenuItem(title: "Show or hide Aparte", action: #selector(AppDelegate.togglePad), keyEquivalent: "")
