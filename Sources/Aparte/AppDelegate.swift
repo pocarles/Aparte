@@ -24,9 +24,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         do {
             let document = try DocumentController()
             let pad = PadWindowController(document: document)
-            pad.onDismiss = { [weak self] in self?.hidePad() }
-            documentController = document
-            padController = pad
+            configurePad(document: document, pad: pad)
         } catch {
             presentStartupError(error)
             return
@@ -88,13 +86,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         }
     }
 
+    func configurePad(document: DocumentController, pad: PadWindowController) {
+        documentController = document
+        padController = pad
+        pad.onPinChanged = { [weak self] pinned in
+            guard let self else { return }
+            if pinned { self.overlays.hide() } else { self.overlays.show() }
+        }
+        pad.onDismiss = { [weak self] in self?.hidePad() }
+    }
+
+    var focusOverlayCountForRuntimeCheck: Int { overlays.runtimeWindowCount }
+
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         showPad()
         return false
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        documentController?.saveNow()
+        documentController?.saveNow(checkpoint: true)
         hotKeyController?.invalidate()
         preferencesController?.closeSettings()
         if let escapeMonitor {
@@ -116,7 +126,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         // Showing a pad that is already open would replay the fade-in as a flash.
         guard let padController, !padController.isVisible else { return }
         if NSApp.isHidden { NSApp.unhide(nil) }
-        overlays.show()
+        if !padController.isPinned { overlays.show() }
         padController.show()
         NSApp.activate(ignoringOtherApps: true)
     }
@@ -128,7 +138,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private func hidePad(deactivating: Bool) {
         padController?.hide()
         overlays.hide()
-        documentController?.saveNow()
+        documentController?.saveNow(checkpoint: true)
         if deactivating { NSApp.hide(nil) }
     }
 
@@ -180,6 +190,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         padController?.restoreLastCleared()
     }
 
+    @objc func showRecentVersions() {
+        showPad()
+        padController?.showRecentVersions()
+    }
+
+    @objc func clearVersionHistory() {
+        showPad()
+        padController?.clearVersionHistory()
+    }
+
     @objc func discardRecovery() { padController?.discardRecovery() }
 
     #if APARTE_DIRECT_UPDATES
@@ -191,6 +211,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     #endif
 
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        if padController?.isReviewingVersions == true,
+           [#selector(clearPad), #selector(copyAll), #selector(copyMarkdown), #selector(copyPlainText),
+            #selector(saveMarkdownAs), #selector(sendToEndpoint), #selector(restoreLastCleared),
+            #selector(discardRecovery)].contains(menuItem.action) { return false }
         switch menuItem.action {
         #if APARTE_DIRECT_UPDATES
         case #selector(checkForUpdates):
@@ -227,12 +251,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     @objc private func screenLayoutChanged() {
         guard padController?.isVisible == true else { return }
-        overlays.show()
+        if padController?.isPinned != true { overlays.show() }
         padController?.recenter()
     }
 
-    @objc private func applicationResignedActive() {
-        guard padController?.isVisible == true else { return }
+    @objc func applicationResignedActive() {
+        padController?.closeVersions()
+        guard padController?.isVisible == true, padController?.isPinned != true else { return }
         hidePad()
     }
 

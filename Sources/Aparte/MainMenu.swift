@@ -14,7 +14,7 @@ enum MainMenu {
         section("Aparte", [MenuCommand.about.item(target: target)] + MenuCommand.updates.map { $0.item(target: target) }
                 + [.separator(), MenuCommand.settings.item(target: target), .separator(), MenuCommand.hide.item(target: target), MenuCommand.quit.item()])
         section("File", [MenuCommand.save.item(target: target), MenuCommand.send.item(target: target), MenuCommand.clear.item(target: target), .separator(),
-                          MenuCommand.restore.item(target: target), MenuCommand.discard.item(target: target)])
+                          MenuCommand.versions.item(target: target), MenuCommand.clearVersions.item(target: target), MenuCommand.restore.item(target: target), MenuCommand.discard.item(target: target)])
         section("Edit", MenuCommand.editing.map { $0.item() } + [.separator(), MenuCommand.copyAll.item(target: target),
                            MenuCommand.copyMarkdown.item(target: target), MenuCommand.copyPlain.item(target: target)])
         section("Format", MenuCommand.formatting.map { $0.item() })

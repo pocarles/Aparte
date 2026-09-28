@@ -2,6 +2,13 @@
 
 All notable changes appear here. The project follows semantic versioning.
 
+## 1.8.0 - 2026-09-28
+
+- Pin the pad with the icon in the top right to keep it open beside other apps. Move it by the top edge and resize it from the edges. Aparte remembers its position and size, and removes the surrounding dimming while pinned.
+- Move to the left edge to browse recent versions. Hover over a mark to preview it, move away to return to your draft, or click to restore it as the newest version. Restoring protects the current draft and supports Command-Z.
+- Small wording edits, punctuation, and formatting tweaks are grouped into fewer history steps. Up to 20 checkpoints stay on this Mac. Clear version history removes them without clearing the pad or its last-cleared recovery copy.
+- History previews remain readable when switching between long and short versions or changing zoom. The history marks have no connecting vertical line.
+
 ## 1.7.0 - 2026-09-22
 
 - Send to endpoint… posts the pad's Markdown, or the selection when one exists, to an https address you type. The last address that succeeded is remembered on this Mac. Plain http is accepted only for localhost.

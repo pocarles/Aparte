@@ -6,7 +6,7 @@ enum AparteMain {
     @MainActor
     static func main() {
         let application = NSApplication.shared
-        if ProcessInfo.processInfo.arguments.contains("--runtime-acceptance") {
+        if ProcessInfo.processInfo.arguments.contains("--runtime-acceptance") || Bundle.main.bundleIdentifier == "com.pocarles.aparte.preview" {
             application.setActivationPolicy(.accessory)
             application.finishLaunching()
             exit(RuntimeAcceptance.run())

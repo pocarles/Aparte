@@ -23,7 +23,7 @@ Aparte is an accessory-only AppKit process. It has no Dock icon and owns:
 - one Carbon global hotkey registration, defaulting to Option-Space, driven by the system event loop rather than polling;
 - one reusable 1,032 by 816 point `NSPanel`, fitted down for smaller displays, containing a native, vertically scrolling `NSTextView`;
 - one borderless dimming window per connected display while the pad is visible;
-- one working Markdown document and one optional last-cleared recovery file.
+- one working Markdown document, one optional last-cleared recovery file, and a bounded local version history.
 
 The panel sits above the dimming windows. Focus mode animates only window alpha for 140 to 180 milliseconds. It uses no blur, screenshots, screen capture, or repeating animation timer.
 
@@ -93,3 +93,40 @@ arrive. Success is reported only after the complete transfer finishes, so a
 connection failure after successful headers still reports a failed send. The
 delegate refuses redirects and cancels its URLSession task when the Swift task
 is cancelled. No response body is retained.
+
+## Recent versions and pinning
+
+`VersionHistoryStore` atomically writes up to 20 timestamped Markdown checkpoints
+in `aparte.versions.json`, beside the working document. Consecutive identical
+and blank drafts are skipped. Automatic checkpoints compare word edits against the
+last saved version, ignoring case, punctuation, and minor formatting. The threshold
+is 12% of the longer draft's word count, rounded up and capped at 40 words. A bounded
+edit-distance comparison trims shared ends and runs within a band of that threshold.
+Skipped edits accumulate against the saved baseline. Browsing applies the same rule
+to existing versions without modifying the history file. Clear and restore bypass
+this grouping when saving exact safety copies. DocumentController checks at most
+once a minute during editing, and on dismissal or termination, using the existing
+one-shot autosave rather than a repeating timer. The first edit
+after launch protects the loaded wording. Opening an unchanged pad does not
+recreate cleared history. A history failure does not stop normal autosave, but
+it blocks a restore or clear that cannot protect the current text.
+
+`VersionLadderView` tracks the left edge with native mouse events. Hovering a
+mark renders a separate, read-only text view over the editor. Leaving the
+ladder uncovers the live editor without changing its text, selection, scroll,
+or undo history. Clicking a mark checkpoints the current draft, makes one
+undoable replacement, and records the restored text as the newest version.
+The same ladder supports Up, Down, Return, and Escape when opened through its
+menu command. Clear version history removes the checkpoints without removing
+the current document or the separate last-cleared recovery file.
+
+Pinning adds the native resizable window style, uses the floating window level,
+and suppresses both dimming and dismissal on application deactivation. A drag
+area along the top moves the window. UserDefaults remembers the pin and frame;
+frames are fitted to an available display on reopen and display changes.
+Unpinning restores the centered focus view. Explicit dismissal still saves and
+hides a pinned pad.
+
+The history preview explicitly uses TextKit 1 and lays out its full text container
+before sizing the document view. Its pixel checks run before accessing the layout
+manager, since that access can hide a TextKit 2 rendering regression.

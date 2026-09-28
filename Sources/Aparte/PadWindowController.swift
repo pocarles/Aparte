@@ -25,6 +25,26 @@ final class PadWindowController: NSObject, NSTextViewDelegate, NSWindowDelegate 
     private weak var saveButton: PadActionButton?
     private weak var clearButton: PadActionButton?
     private weak var snapshotButton: PadActionButton?
+    private let pinButton = NSButton()
+    private let dragHandle = PadDragHandle()
+    private let versionLadder = VersionLadderView(frame: .zero)
+    private let versionPreviewScroll = VersionPreviewScrollView()
+    // Build a TextKit 1 stack explicitly. A default TextKit 2 view can retain
+    // clipped layout fragments when its storage changes while hidden.
+    private let versionPreview: NSTextView = {
+        let storage = NSTextStorage()
+        let manager = NSLayoutManager()
+        let container = NSTextContainer(size: NSSize(width: 1, height: CGFloat.greatestFiniteMagnitude))
+        storage.addLayoutManager(manager)
+        manager.addTextContainer(container)
+        return NSTextView(frame: .zero, textContainer: container)
+    }()
+    private let versionLabel = NSTextField(labelWithString: "")
+    private var historyNotice: String?
+    private(set) var isPinned = false
+    var onPinChanged: ((Bool) -> Void)?
+    private var pinnedFrame: NSRect?
+    private var isAdjustingFrame = false
     private let countLabel = NSTextField(labelWithString: "")
     private let defaults: UserDefaults
     private let endpointSender: EndpointSender
@@ -40,6 +60,7 @@ final class PadWindowController: NSObject, NSTextViewDelegate, NSWindowDelegate 
     private var documentCounts: (revision: UInt64, value: TextCounts)?
     private var selectionCounts: (revision: UInt64, range: NSRange, value: TextCounts)?
     var isOptionsMenuOpen: Bool { optionsOverlay != nil }
+    var isReviewingVersions: Bool { versionLadder.isExpanded }
     var showsCounts: Bool { defaults.bool(forKey: "showWordCount") }
 
     var onDismiss: (() -> Void)?
@@ -72,6 +93,13 @@ final class PadWindowController: NSObject, NSTextViewDelegate, NSWindowDelegate 
         configurePanel()
         configureEditor()
         configureContent()
+        if let saved = defaults.string(forKey: "pinnedFrame") {
+            let frame = NSRectFromString(saved)
+            if frame.width.isFinite, frame.height.isFinite, frame.origin.x.isFinite, frame.origin.y.isFinite,
+               frame.width >= 560, frame.height >= 360 { pinnedFrame = frame }
+        }
+        isPinned = defaults.bool(forKey: "isPinned")
+        applyPinAppearance()
         let savedZoom = defaults.double(forKey: "textZoom")
         setZoom(savedZoom == 0 ? 1 : savedZoom)
         updateCounts()
@@ -79,7 +107,7 @@ final class PadWindowController: NSObject, NSTextViewDelegate, NSWindowDelegate 
 
     func show() {
         resetActionButtons()
-        recenter()
+        if isPinned { fitPinnedFrame() } else { recenter() }
         panel.alphaValue = 0
         panel.makeKeyAndOrderFront(nil)
         panel.orderFrontRegardless()
@@ -96,6 +124,7 @@ final class PadWindowController: NSObject, NSTextViewDelegate, NSWindowDelegate 
         formattingBar.closeLinkPopover()
         closeEndpointOverlay()
         closeOptions()
+        closeVersions()
         formattingBar.isHidden = true
         // Ordering the pad out while a sheet is attached would orphan the sheet.
         if let sheet = panel.attachedSheet {
@@ -105,6 +134,7 @@ final class PadWindowController: NSObject, NSTextViewDelegate, NSWindowDelegate 
     }
 
     func recenter() {
+        if isPinned { fitPinnedFrame(); return }
         let screen = activeScreen() ?? NSScreen.main
         guard let visibleFrame = screen?.visibleFrame else { return }
         let width = min(Self.preferredSize.width, visibleFrame.width - 32)
@@ -124,6 +154,60 @@ final class PadWindowController: NSObject, NSTextViewDelegate, NSWindowDelegate 
     func copyMarkdown() {
         editor.copyAsMarkdown(nil)
     }
+
+    @objc func togglePin() {
+        closeVersions()
+        if isPinned { rememberPinnedFrame() }
+        isPinned.toggle()
+        defaults.set(isPinned, forKey: "isPinned")
+        applyPinAppearance()
+        if isPinned { fitPinnedFrame() } else { recenter() }
+        onPinChanged?(isPinned)
+        panel.makeFirstResponder(editor)
+    }
+
+    private func applyPinAppearance() {
+        isAdjustingFrame = true
+        defer { isAdjustingFrame = false }
+        if isPinned { panel.styleMask.insert(.resizable) }
+        else { panel.styleMask.remove(.resizable) }
+        panel.minSize = NSSize(width: 560, height: 360)
+        panel.level = isPinned ? .floating : .popUpMenu
+        panel.isMovableByWindowBackground = !isPinned
+        dragHandle.isPinned = isPinned
+        pinButton.image = NSImage(systemSymbolName: isPinned ? "pin.fill" : "pin", accessibilityDescription: nil)
+        pinButton.contentTintColor = isPinned ? .controlAccentColor : .secondaryLabelColor
+        pinButton.state = isPinned ? .on : .off
+        pinButton.toolTip = isPinned ? "Unpin and return to focused writing" : "Pin to keep open. Drag the top edge to move, and the edges to resize."
+        pinButton.setAccessibilityLabel(isPinned ? "Unpin pad" : "Pin pad")
+        panel.invalidateCursorRects(for: dragHandle)
+    }
+
+    private func fitPinnedFrame() {
+        isAdjustingFrame = true
+        defer { isAdjustingFrame = false; rememberPinnedFrame() }
+        var frame = pinnedFrame ?? panel.frame
+        let screen = NSScreen.screens.max { a, b in
+            let first = a.visibleFrame.intersection(frame)
+            let second = b.visibleFrame.intersection(frame)
+            return max(0, first.width) * max(0, first.height) < max(0, second.width) * max(0, second.height)
+        } ?? activeScreen()
+        guard let bounds = screen?.visibleFrame else { return }
+        frame.size.width = min(max(560, frame.width), bounds.width)
+        frame.size.height = min(max(360, frame.height), bounds.height)
+        frame.origin.x = min(max(bounds.minX, frame.minX), bounds.maxX - frame.width)
+        frame.origin.y = min(max(bounds.minY, frame.minY), bounds.maxY - frame.height)
+        panel.setFrame(frame, display: true)
+        layoutZoomedEditor()
+    }
+
+    private func rememberPinnedFrame() {
+        guard isPinned, !isAdjustingFrame else { return }
+        pinnedFrame = panel.frame
+        defaults.set(NSStringFromRect(panel.frame), forKey: "pinnedFrame")
+    }
+
+    func windowDidMove(_ notification: Notification) { rememberPinnedFrame() }
 
     @objc func copyAll() {
         performCopyAll(to: .general)
@@ -148,6 +232,7 @@ final class PadWindowController: NSObject, NSTextViewDelegate, NSWindowDelegate 
     }
 
     func toggleOptions() {
+        closeVersions()
         guard !isOptionsMenuOpen else { closeOptions(); return }
         formattingBar.closeLinkPopover()
         closeEndpointOverlay()
@@ -155,6 +240,7 @@ final class PadWindowController: NSObject, NSTextViewDelegate, NSWindowDelegate 
     }
 
     func dismissTransientUI() -> Bool {
+        if versionLadder.isExpanded { closeVersions(); return true }
         if isOptionsMenuOpen { closeOptions(); return true }
         if formattingBar.isShowingLink { formattingBar.closeLinkPopover(); return true }
         if endpointOverlay != nil { closeEndpointOverlay(); return true }
@@ -167,6 +253,7 @@ final class PadWindowController: NSObject, NSTextViewDelegate, NSWindowDelegate 
     }
 
     func presentOptions(_ menu: NSMenu) {
+        closeVersions()
         closeEndpointOverlay()
         closeOptions()
         let overlay = OptionsOverlayView(menu: menu)
@@ -269,12 +356,14 @@ final class PadWindowController: NSObject, NSTextViewDelegate, NSWindowDelegate 
         let visibleSize = scrollView.contentView.bounds.size
         // Magnification scales document coordinates. Reflow to the visible width
         // and keep the pad's physical margins constant as text grows.
-        editor.textContainerInset = NSSize(width: textColumnInset(visibleWidth: visibleSize.width), height: 120 / zoom)
+        let inset = isPinned ? 40 / zoom : textColumnInset(visibleWidth: visibleSize.width)
+        editor.textContainerInset = NSSize(width: inset, height: (isPinned ? 52 : 120) / zoom)
         editor.minSize = NSSize(width: 0, height: visibleSize.height)
         editor.maxSize = NSSize(width: visibleSize.width, height: .greatestFiniteMagnitude)
         editor.autoresizingMask = []
         editor.setFrameSize(NSSize(width: visibleSize.width, height: max(visibleSize.height, editor.frame.height)))
         editor.sizeToFit()
+        if versionLadder.isExpanded { layoutVersionPreview() }
     }
 
     private func updateCounts() {
@@ -324,6 +413,121 @@ final class PadWindowController: NSObject, NSTextViewDelegate, NSWindowDelegate 
 
     var hasRecovery: Bool { document.hasRecovery }
 
+    func showRecentVersions() {
+        closeOptions()
+        closeEndpointOverlay()
+        formattingBar.closeLinkPopover()
+        versionLadder.reveal()
+        panel.makeFirstResponder(versionLadder)
+    }
+
+    private func versionsForBrowsing() -> [VersionHistoryStore.Version]? {
+        guard !isOptionsMenuOpen, endpointOverlay == nil, panel.attachedSheet == nil else { return nil }
+        formattingBar.closeLinkPopover()
+        formattingBar.isHidden = true
+        historyNotice = nil
+        do {
+            let versions = try document.versionsForBrowsing()
+            if versions.isEmpty { historyNotice = "No previous versions yet" }
+            if document.lastHistoryError != nil { historyNotice = "The latest version could not be saved" }
+            return versions
+        } catch {
+            historyNotice = "Version history could not be opened"
+            return []
+        }
+    }
+
+    private func previewVersion(_ version: VersionHistoryStore.Version?) {
+        versionLabel.isHidden = false
+        if let version {
+            countLabel.isHidden = true
+            versionPreview.textStorage?.setAttributedString(MarkdownCodec.render(version.markdown))
+            layoutVersionPreview()
+            versionPreviewScroll.isHidden = false
+            rootView.versionAccessibilityViews = [versionLadder, versionPreviewScroll, versionLabel, pinButton]
+            versionPreview.scrollToBeginningOfDocument(nil)
+            let formatter = DateFormatter()
+            formatter.dateStyle = .medium
+            formatter.timeStyle = .short
+            versionLabel.stringValue = "\(formatter.string(from: version.createdAt)) · Click the mark to restore"
+            NSAccessibility.post(element: versionPreview, notification: .valueChanged)
+        } else {
+            versionPreviewScroll.isHidden = true
+            rootView.versionAccessibilityViews = nil
+            versionLabel.stringValue = historyNotice ?? "Current draft"
+            updateCounts()
+        }
+    }
+
+    private func layoutVersionPreview() {
+        guard let liveScroll = editor.enclosingScrollView else { return }
+        versionPreviewScroll.frame = liveScroll.frame
+        versionPreviewScroll.magnification = zoom
+        let size = versionPreviewScroll.contentView.bounds.size
+        versionPreview.textContainerInset = editor.textContainerInset
+        versionPreview.minSize = NSSize(width: 0, height: size.height)
+        versionPreview.maxSize = NSSize(width: size.width, height: .greatestFiniteMagnitude)
+        versionPreview.setFrameSize(NSSize(width: size.width, height: size.height))
+        if let container = versionPreview.textContainer, let manager = versionPreview.layoutManager {
+            container.containerSize = NSSize(
+                width: max(1, size.width - versionPreview.textContainerInset.width * 2),
+                height: .greatestFiniteMagnitude
+            )
+            manager.ensureLayout(for: container)
+            let height = ceil(manager.usedRect(for: container).maxY + versionPreview.textContainerInset.height * 2)
+            versionPreview.setFrameSize(NSSize(width: size.width, height: max(size.height, height)))
+        }
+        versionPreview.needsDisplay = true
+    }
+
+    @discardableResult
+    func restoreVersion(_ version: VersionHistoryStore.Version, presentingErrors: Bool = true) -> Bool {
+        do {
+            try document.checkpointNow()
+            editor.replaceAll(with: MarkdownCodec.render(version.markdown))
+            document.saveNow(checkpoint: true, preservingExactDraft: true)
+            if let error = document.lastSaveError { throw error }
+            closeVersions()
+            updateCounts()
+            return true
+        } catch {
+            if presentingErrors { presentError(error, message: "Aparte could not restore this version.") }
+            return false
+        }
+    }
+
+    func clearVersionHistory() {
+        closeVersions()
+        let alert = NSAlert()
+        alert.messageText = "Clear recent versions?"
+        alert.informativeText = "This deletes the saved versions on this Mac. Your current pad and last-cleared recovery copy stay available. New edits can create new versions."
+        alert.addButton(withTitle: "Clear history")
+        alert.addButton(withTitle: "Cancel")
+        alert.beginSheetModal(for: panel) { [weak self] response in
+            MainActor.assumeIsolated {
+                guard response == .alertFirstButtonReturn, let self else { return }
+                do { try self.document.clearHistory() }
+                catch { self.presentError(error, message: "Aparte could not clear version history.") }
+            }
+        }
+    }
+
+    func closeVersions() {
+        guard versionLadder.isExpanded else { return }
+        versionLadder.collapse()
+        versionPreviewScroll.isHidden = true
+        versionLabel.isHidden = true
+        rootView.versionAccessibilityViews = nil
+        updateCounts()
+        if panel.firstResponder === versionLadder { panel.makeFirstResponder(editor) }
+        NSAccessibility.post(element: panel, notification: .layoutChanged)
+    }
+
+    var versionLadderForRuntimeCheck: VersionLadderView { versionLadder }
+    var versionPreviewForRuntimeCheck: NSTextView { versionPreview }
+    var isVersionPreviewVisibleForRuntimeCheck: Bool { !versionPreviewScroll.isHidden }
+    var pinButtonForRuntimeCheck: NSButton { pinButton }
+
     func restoreLastCleared() {
         do {
             guard let recovered = try document.loadRecovery() else { return }
@@ -336,6 +540,7 @@ final class PadWindowController: NSObject, NSTextViewDelegate, NSWindowDelegate 
                 alert.window.level = NSWindow.Level(rawValue: NSWindow.Level.popUpMenu.rawValue + 1)
                 guard alert.runModal() == .alertFirstButtonReturn else { return }
             }
+            try document.checkpointNow()
             editor.replaceAll(with: recovered)
             document.saveNow()
             if let error = document.lastSaveError { throw error }
@@ -417,6 +622,7 @@ final class PadWindowController: NSObject, NSTextViewDelegate, NSWindowDelegate 
     }
 
     private func presentEndpointOverlay(markdown: String) {
+        closeVersions()
         closeOptions()
         closeEndpointOverlay()
         let overlay = EndpointOverlayView(
@@ -608,6 +814,7 @@ final class PadWindowController: NSObject, NSTextViewDelegate, NSWindowDelegate 
     }
 
     func textDidChange(_ notification: Notification) {
+        closeVersions()
         guard let textStorage = editor.textStorage else { return }
         // Covers typing and paste, which do not go through the editor's own
         // replacement path. Attribute-only, and a no-op when styles already match.
@@ -623,6 +830,7 @@ final class PadWindowController: NSObject, NSTextViewDelegate, NSWindowDelegate 
 
     private func configurePanel() {
         panel.title = "Aparte"
+        panel.acceptsMouseMovedEvents = true
         panel.level = .popUpMenu
         panel.isOpaque = false
         panel.backgroundColor = .clear
@@ -636,7 +844,9 @@ final class PadWindowController: NSObject, NSTextViewDelegate, NSWindowDelegate 
     }
 
     func windowDidResize(_ notification: Notification) {
+        rememberPinnedFrame()
         layoutZoomedEditor()
+        updateFormattingBar()
     }
 
     private func configureEditor() {
@@ -739,8 +949,66 @@ final class PadWindowController: NSObject, NSTextViewDelegate, NSWindowDelegate 
 
         formattingBar.isHidden = true
         rootView.addSubview(formattingBar)
+        versionPreviewScroll.drawsBackground = true
+        versionPreviewScroll.backgroundColor = .windowBackgroundColor
+        versionPreviewScroll.hasVerticalScroller = true
+        versionPreviewScroll.autohidesScrollers = true
+        versionPreviewScroll.minMagnification = 0.8
+        versionPreviewScroll.maxMagnification = 1.8
+        versionPreviewScroll.isHidden = true
+        versionPreview.isEditable = false
+        versionPreview.isSelectable = false
+        versionPreview.drawsBackground = false
+        versionPreview.isVerticallyResizable = true
+        versionPreview.isHorizontallyResizable = false
+        versionPreview.autoresizingMask = []
+        versionPreview.textContainer?.widthTracksTextView = true
+        versionPreview.textContainer?.lineFragmentPadding = 0
+        versionPreview.setAccessibilityLabel("Previous version preview")
+        versionPreviewScroll.documentView = versionPreview
+        rootView.addSubview(versionPreviewScroll)
+        versionLadder.translatesAutoresizingMaskIntoConstraints = false
+        versionLadder.onRequestVersions = { [weak self] in self?.versionsForBrowsing() }
+        versionLadder.onPreview = { [weak self] version in self?.previewVersion(version) }
+        versionLadder.onRestore = { [weak self] version in self?.restoreVersion(version) }
+        versionLadder.onDismiss = { [weak self] in self?.closeVersions() }
+        versionLadder.onScroll = { [weak self] event in
+            guard let self else { return }
+            let scroll = self.versionPreviewScroll.isHidden ? self.editor.enclosingScrollView : self.versionPreviewScroll
+            scroll?.scrollWheel(with: event)
+        }
+        rootView.addSubview(versionLadder)
+        versionLabel.translatesAutoresizingMaskIntoConstraints = false
+        versionLabel.font = .systemFont(ofSize: 11)
+        versionLabel.textColor = .secondaryLabelColor
+        versionLabel.lineBreakMode = .byTruncatingTail
+        versionLabel.isHidden = true
+        rootView.addSubview(versionLabel)
+        dragHandle.translatesAutoresizingMaskIntoConstraints = false
+        rootView.addSubview(dragHandle)
+        pinButton.translatesAutoresizingMaskIntoConstraints = false
+        pinButton.isBordered = false
+        pinButton.setButtonType(.toggle)
+        pinButton.target = self
+        pinButton.action = #selector(togglePin)
+        rootView.addSubview(pinButton)
 
         NSLayoutConstraint.activate([
+            versionLadder.leadingAnchor.constraint(equalTo: rootView.leadingAnchor, constant: 2),
+            versionLadder.widthAnchor.constraint(equalToConstant: 30),
+            versionLadder.topAnchor.constraint(equalTo: rootView.topAnchor, constant: 44),
+            versionLadder.bottomAnchor.constraint(equalTo: rootView.bottomAnchor, constant: -44),
+            versionLabel.leadingAnchor.constraint(equalTo: rootView.leadingAnchor, constant: 40),
+            versionLabel.topAnchor.constraint(equalTo: rootView.topAnchor, constant: 18),
+            versionLabel.trailingAnchor.constraint(lessThanOrEqualTo: pinButton.leadingAnchor, constant: -12),
+            dragHandle.topAnchor.constraint(equalTo: rootView.topAnchor),
+            dragHandle.leadingAnchor.constraint(equalTo: rootView.leadingAnchor),
+            dragHandle.trailingAnchor.constraint(equalTo: pinButton.leadingAnchor, constant: -4),
+            dragHandle.heightAnchor.constraint(equalToConstant: 40),
+            pinButton.topAnchor.constraint(equalTo: rootView.topAnchor, constant: 10),
+            pinButton.trailingAnchor.constraint(equalTo: rootView.trailingAnchor, constant: -12),
+            pinButton.widthAnchor.constraint(equalToConstant: 28),
+            pinButton.heightAnchor.constraint(equalToConstant: 28),
             scrollView.leadingAnchor.constraint(equalTo: rootView.leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: rootView.trailingAnchor),
             scrollView.topAnchor.constraint(equalTo: rootView.topAnchor),
@@ -794,7 +1062,7 @@ final class PadWindowController: NSObject, NSTextViewDelegate, NSWindowDelegate 
 
     private func updateFormattingBar() {
         let selection = editor.selectedRange()
-        guard selection.length > 0, panel.isVisible, !isOptionsMenuOpen else {
+        guard selection.length > 0, panel.isVisible, !isOptionsMenuOpen, !versionLadder.isExpanded, endpointOverlay == nil else {
             formattingBar.isHidden = true
             return
         }
@@ -1023,11 +1291,13 @@ private final class ApartePanel: NSPanel {
 @MainActor
 private final class PadBackgroundView: NSView {
     weak var optionsAccessibilityView: NSView?
+    var versionAccessibilityViews: [NSView]?
     override var isOpaque: Bool { false }
 
     // AppKit owns the heterogeneous accessibility tree; preserve its default filtering when the card closes.
     override func accessibilityChildren() -> [Any]? {
         if let optionsAccessibilityView { return [optionsAccessibilityView] }
+        if let versionAccessibilityViews { return versionAccessibilityViews }
         return super.accessibilityChildren()
     }
 
@@ -1045,5 +1315,17 @@ private final class PadBackgroundView: NSView {
         let border = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: 18, yRadius: 18)
         border.lineWidth = 1
         border.stroke()
+    }
+}
+
+@MainActor
+private final class PadDragHandle: NSView {
+    var isPinned = false
+    override func mouseDown(with event: NSEvent) {
+        guard isPinned else { return }
+        window?.performDrag(with: event)
+    }
+    override func resetCursorRects() {
+        if isPinned { addCursorRect(bounds, cursor: .openHand) }
     }
 }

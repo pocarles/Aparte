@@ -169,3 +169,18 @@ checks. Native UI inspection confirmed the filled state dot and smaller chevrons
 one expanded submenu at a time, and a clear gap between shortcuts and the visible
 scrollbar in a 600-point-high dark preview. Switching groups after scrolling also
 closed the previous group. The preview used temporary text and preferences.
+
+## Recent versions and pinning
+
+- [ ] Click the top-right pin. Other apps remain undimmed and the pad stays visible while typing or scrolling in another app.
+- [ ] Drag the top edge to move the pinned pad. Resize from an edge and a corner, down to the minimum size. Text reflows and footer controls remain usable.
+- [ ] Hide and reopen the pinned pad, then quit and relaunch. Pin, position, and size return. Check another display and disconnect/reconnect a display.
+- [ ] Unpin. The pad returns to its centered focus view and dismisses when another app takes focus. Escape and the global shortcut dismiss in both modes.
+- [ ] Move to the left edge. Separate marks appear without a vertical connecting line. Hover over two marks to preview their text in place. Move away and confirm the current text, selection, and scroll position return unchanged. Click a mark and confirm it becomes the newest version. Command-Z restores the previous draft.
+- [ ] Open the same ladder with Command-Option-Shift-V and through Recovery in the options card. Use Up and Down to preview, Return to restore, and Escape to return to writing.
+- [ ] Clear version history from Recovery, cancel once, then confirm. Current text and last-cleared recovery remain. Reopening the untouched app does not recreate history.
+- [ ] Review the pin and history preview in light and dark appearance. Navigate the preview and its controls using the keyboard and VoiceOver.
+
+- [ ] Browse long and short versions repeatedly, both pinned and unpinned and at different zoom levels. Every preview is readable; switching versions returns to its beginning.
+- [ ] Make punctuation and formatting tweaks, then dismiss and reopen. No extra step appears. Change a sentence or paragraph and confirm a new step appears once the accumulated word edits reach the threshold.
+- [ ] Existing similar steps are grouped on opening history. The working draft and stored history file remain unchanged by browsing.

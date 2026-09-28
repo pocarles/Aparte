@@ -44,6 +44,8 @@ struct MenuCommand {
     static let save = Self(title: "Save Markdown As…", action: #selector(AppDelegate.saveMarkdownAs), key: "s", modifiers: [.command, .shift])
     static let send = Self(title: "Send to endpoint…", action: #selector(AppDelegate.sendToEndpoint), key: "u", modifiers: [.command, .option])
     static let clear = Self(title: "Clear pad", action: #selector(AppDelegate.clearPad), key: "\u{7f}", modifiers: [.command, .option])
+    static let clearVersions = Self(title: "Clear version history…", action: #selector(AppDelegate.clearVersionHistory), key: "h", modifiers: [.command, .option, .shift])
+    static let versions = Self(title: "Recent versions…", action: #selector(AppDelegate.showRecentVersions), key: "v", modifiers: [.command, .option, .shift])
     static let restore = Self(title: "Restore last cleared text", action: #selector(AppDelegate.restoreLastCleared), key: "r", modifiers: [.command, .shift])
     static let discard = Self(title: "Discard recovery copy…", action: #selector(AppDelegate.discardRecovery), key: "r", modifiers: [.command, .option, .shift])
     static let counts = Self(title: "Show word and character count", action: #selector(AppDelegate.toggleCounts), key: "w", modifiers: [.command, .shift])

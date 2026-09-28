@@ -1186,6 +1186,196 @@ enum RuntimeAcceptance {
             check(NSApp.mainMenu?.performKeyEquivalent(with: restoreEvent) == true && editor.string == "Keyboard checks", "restore-shortcut-recovers-cleared-text")
             optionsTarget.allowRecovery = false
 
+            // Exercise the same pin/focus callbacks used by the application delegate.
+            overlays.hide()
+            let lifecycle = AppDelegate()
+            lifecycle.configurePad(document: document, pad: pad)
+            pad.pinButtonForRuntimeCheck.performClick(nil)
+            check(pad.isPinned && pad.window.styleMask.contains(.resizable)
+                  && pad.window.level == .floating && lifecycle.focusOverlayCountForRuntimeCheck == 0,
+                  "pin-enables-resizing-without-dimming")
+            let draftBeforeResize = document.markdown
+            let resized = NSRect(x: pad.window.frame.minX + 20, y: pad.window.frame.minY + 20, width: 580, height: 400)
+            pad.window.setFrame(resized, display: true)
+            drainRunLoop(for: 0.1)
+            lifecycle.applicationResignedActive()
+            check(pad.isVisible && document.markdown == draftBeforeResize, "pinned-pad-survives-deactivation-and-resize")
+            check(pad.editorForRuntimeCheck.frame.width <= pad.editorForRuntimeCheck.enclosingScrollView!.contentView.bounds.width + 1,
+                  "pinned-narrow-editor-reflows")
+            pad.hide()
+            pad.show()
+            check(pad.window.frame == resized, "pinned-position-and-size-survive-reopen")
+            let reopenedPad = PadWindowController(document: document, defaults: defaults)
+            reopenedPad.show()
+            check(reopenedPad.isPinned && reopenedPad.window.frame == resized, "pin-and-frame-survive-new-controller")
+            reopenedPad.hide()
+            pad.pinButtonForRuntimeCheck.performClick(nil)
+            check(!pad.isPinned && !pad.window.styleMask.contains(.resizable)
+                  && lifecycle.focusOverlayCountForRuntimeCheck > 0, "unpin-restores-focus-mode")
+            lifecycle.applicationResignedActive()
+            check(!pad.isVisible && lifecycle.focusOverlayCountForRuntimeCheck == 0, "unpinned-pad-dismisses-on-deactivation")
+            lifecycle.showPad()
+
+            let groupingStore = try PersistenceStore(fileURL: root.appendingPathComponent("grouping/aparte.md"))
+            let groupingDocument = try DocumentController(store: groupingStore)
+            let groupingBaseline = (0..<100).map { "word\($0)" }.joined(separator: " ")
+            groupingDocument.textDidChange(MarkdownCodec.render(groupingBaseline))
+            groupingDocument.saveNow(checkpoint: true)
+            groupingDocument.textDidChange(MarkdownCodec.render(groupingBaseline + " small edit"))
+            groupingDocument.saveNow(checkpoint: true)
+            let groupedOnDismiss = try groupingDocument.recentVersions()
+            check(groupedOnDismiss.count == 1 && groupedOnDismiss[0].markdown == groupingBaseline,
+                  "dismissal-does-not-add-minor-edit-version")
+            try groupingDocument.backupBeforeClear()
+            let exactBeforeClear = try groupingDocument.recentVersions()
+            check(exactBeforeClear.first?.markdown == groupingDocument.markdown,
+                  "clear-protects-exact-minor-edit")
+
+            let previewFixtures = [
+                "# Long letter\n\n" + String(repeating: "A sentence with enough words to wrap across several lines in the writing pad. ", count: 70),
+                "# A short note\n\nOnly a few words.",
+                String(repeating: "A paragraph of prose for checking the preview width and line wrapping.\n\n", count: 12),
+            ]
+            for fixture in previewFixtures {
+                pad.setMarkdownForRuntimeCheck(fixture)
+                try document.checkpointNow()
+            }
+            pad.setMarkdownForRuntimeCheck("Current draft while browsing different lengths")
+            for pinned in [false, true] {
+                if pad.isPinned != pinned { pad.togglePin() }
+                if pinned { pad.window.setFrame(NSRect(x: 100, y: 100, width: 580, height: 400), display: true) }
+                for zoomed in [false, true] {
+                    if zoomed { pad.zoomIn(); pad.zoomIn() } else { pad.resetZoom() }
+                    pad.showRecentVersions()
+                    for index in [1, 2, 3, 1, 3, 2] {
+                        pad.versionLadderForRuntimeCheck.preview(index: index)
+                        let preview = pad.versionPreviewForRuntimeCheck
+                        check(abs(preview.enclosingScrollView!.contentView.bounds.minY) < 1,
+                              "preview-starts-at-top-pinned-\(pinned)-zoomed-\(zoomed)-rung-\(index)")
+                        preview.displayIfNeeded()
+                        let bitmap = preview.bitmapImageRepForCachingDisplay(in: preview.visibleRect)!
+                        preview.cacheDisplay(in: preview.visibleRect, to: bitmap)
+                        var ink = 0
+                        for y in stride(from: 0, to: bitmap.pixelsHigh, by: 2) {
+                            for x in stride(from: 0, to: bitmap.pixelsWide, by: 2) {
+                                if let color = bitmap.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB),
+                                   color.alphaComponent > 0.5,
+                                   color.redComponent + color.greenComponent + color.blueComponent < 1.8 { ink += 1 }
+                            }
+                        }
+                        check(ink > 100, "preview-visible-ink-pinned-\(pinned)-zoomed-\(zoomed)-rung-\(index)")
+                        let container = preview.textContainer!
+                        let expectedWidth = preview.enclosingScrollView!.contentView.bounds.width - preview.textContainerInset.width * 2
+                        check(abs(container.containerSize.width - expectedWidth) < 1 && expectedWidth > 250,
+                              "preview-width-pinned-\(pinned)-zoomed-\(zoomed)-rung-\(index)")
+                        preview.scrollToEndOfDocument(nil)
+                    }
+                    pad.closeVersions()
+                }
+            }
+            if pad.isPinned { pad.togglePin() }
+            pad.resetZoom()
+            try document.clearHistory()
+
+            pad.setMarkdownForRuntimeCheck("# Earlier wording\n\nA version to return to.")
+            try document.checkpointNow()
+            let earlierVersion = try document.recentVersions()[0]
+            pad.setMarkdownForRuntimeCheck("# Current wording\n\nKeep this safe before restoring.")
+            let currentWording = document.markdown
+            let selectionBeforeBrowsing = editor.selectedRange()
+            let scrollBeforeBrowsing = editor.enclosingScrollView!.contentView.bounds.origin
+            let historyBeforeBrowsing = try document.recentVersions()
+            pad.showRecentVersions()
+            let ladder = pad.versionLadderForRuntimeCheck
+            ladder.layoutSubtreeIfNeeded()
+            let rung = ladder.marksForRuntimeCheck[1]
+            let hoverPoint = ladder.convert(NSPoint(x: rung.frame.midX, y: rung.frame.midY), to: nil)
+            let hoverEvent = NSEvent.mouseEvent(with: .mouseMoved, location: hoverPoint, modifierFlags: [], timestamp: 0,
+                windowNumber: pad.window.windowNumber, context: nil, eventNumber: 0, clickCount: 0, pressure: 0)!
+            ladder.mouseMoved(with: hoverEvent)
+            check(pad.versionPreviewForRuntimeCheck.string.contains("Earlier wording"),
+                  "versions-preview-renders-markdown")
+            check(document.markdown == currentWording && pad.isVersionPreviewVisibleForRuntimeCheck, "preview-does-not-change-writing")
+            let preview = pad.versionPreviewForRuntimeCheck
+            let previewContainer = preview.textContainer!
+            preview.layoutManager?.ensureLayout(for: previewContainer)
+            check(previewContainer.containerSize.width > 300 && previewContainer.containerSize.height > 10_000,
+                  "version-preview-has-readable-unbounded-text-container")
+
+
+            check(pad.window.contentView?.accessibilityChildren()?.contains { ($0 as? NSView) === editor.enclosingScrollView } == false,
+                  "history-preview-hides-live-editor-from-accessibility")
+            ladder.mouseExited(with: hoverEvent)
+            let historyAfterBrowsing = try document.recentVersions()
+            check(!pad.isVersionPreviewVisibleForRuntimeCheck && !ladder.isExpanded
+                  && document.markdown == currentWording && editor.selectedRange() == selectionBeforeBrowsing
+                  && editor.enclosingScrollView!.contentView.bounds.origin == scrollBeforeBrowsing
+                  && historyAfterBrowsing == historyBeforeBrowsing, "leaving-ladder-restores-current-view-without-edit-or-checkpoint")
+            pad.showRecentVersions()
+            ladder.marksForRuntimeCheck[1].performClick(nil)
+            let preservedVersions = try document.recentVersions()
+            check(document.markdown == earlierVersion.markdown && preservedVersions.first?.markdown == earlierVersion.markdown
+                  && preservedVersions.first?.id != earlierVersion.id && preservedVersions.contains { $0.markdown == currentWording },
+                  "restore-protects-current-draft")
+            pad.undoForRuntimeCheck()
+            check(document.markdown == currentWording, "version-restore-is-undoable")
+            try document.clearHistory()
+            document.saveNow(checkpoint: true)
+            let historyAfterClear = try document.recentVersions()
+            check(historyAfterClear.isEmpty, "clear-history-stays-empty-without-new-edits")
+            let relaunchedDocument = try DocumentController(store: store)
+            relaunchedDocument.saveNow(checkpoint: true)
+            let relaunchedHistory = try relaunchedDocument.recentVersions()
+            check(relaunchedHistory.isEmpty, "clear-history-stays-empty-after-relaunch")
+            relaunchedDocument.textDidChange(MarkdownCodec.render("First edit after relaunch"))
+            relaunchedDocument.saveNow()
+            let historyAfterRelaunchEdit = try relaunchedDocument.recentVersions()
+            check(historyAfterRelaunchEdit.contains { $0.markdown == currentWording }, "first-edit-protects-launch-time-wording")
+            let countAfterFirstEdit = historyAfterRelaunchEdit.count
+            relaunchedDocument.textDidChange(MarkdownCodec.render("A few more keystrokes"))
+            relaunchedDocument.saveNow()
+            let historyAfterKeystrokes = try relaunchedDocument.recentVersions()
+            check(historyAfterKeystrokes.count == countAfterFirstEdit, "frequent-edits-coalesce-checkpoints")
+            let corruptHistory = VersionHistoryStore(documentURL: fileURL)
+            try Data("broken".utf8).write(to: corruptHistory.fileURL)
+            let unchangedRestore = pad.restoreVersion(earlierVersion, presentingErrors: false)
+            check(!unchangedRestore && document.markdown == currentWording, "restore-rechecks-history-for-unchanged-draft")
+            pad.setMarkdownForRuntimeCheck("Writing survives a history failure")
+            document.saveNow(checkpoint: true)
+            let liveAfterHistoryFailure = try store.load()
+            check(liveAfterHistoryFailure == document.markdown && document.lastHistoryError != nil,
+                  "history-failure-does-not-block-autosave")
+            pad.showRecentVersions()
+            let failedRestore = pad.restoreVersion(earlierVersion, presentingErrors: false)
+            check(!failedRestore && document.markdown == liveAfterHistoryFailure, "failed-checkpoint-blocks-restore")
+            _ = pad.dismissTransientUI()
+            try document.clearHistory()
+
+            if ProcessInfo.processInfo.arguments.contains("--preview-pin-history") || Bundle.main.bundleIdentifier == "com.pocarles.aparte.preview" {
+                pad.setMarkdownForRuntimeCheck("# A little space to write\n\nKeep this draft beside an email or a page you are reading.\n\nPin it, move it, and resize it to fit.")
+                try document.checkpointNow()
+                pad.setMarkdownForRuntimeCheck("# Room for another thought\n\nMove to the left edge to browse earlier wording. Hover over a mark to preview it, or click to make it current.\n\nYour writing stays on this Mac.")
+                try document.checkpointNow()
+                let resignObserver = NotificationCenter.default.addObserver(forName: NSApplication.didResignActiveNotification, object: nil, queue: .main) { _ in
+                    MainActor.assumeIsolated { lifecycle.applicationResignedActive() }
+                }
+                NSApp.mainMenu = MainMenu.make(target: lifecycle)
+                NSApp.delegate = lifecycle
+                print("APARTE_PREVIEW_READY")
+                fflush(stdout)
+                NSApp.run()
+                NotificationCenter.default.removeObserver(resignObserver)
+            }
+            if pad.isPinned { pad.togglePin() }
+            lifecycle.hidePad()
+            pad.onDismiss = {
+                escapeDismissed = true
+                pad.hide()
+                overlays.hide()
+            }
+            overlays.show()
+            pad.show()
+
             if ProcessInfo.processInfo.arguments.contains("--preview-writing-tools") {
                 pad.setMarkdownForRuntimeCheck("# A little space to write\n\nWrite, copy, and carry on. Your words stay on this Mac.\n\n- A draft for tomorrow\n- A thought worth keeping")
                 editor.setSelectedRange(NSRange(location: editor.string.utf16.count, length: 0))
@@ -1368,6 +1558,8 @@ private final class AcceptanceOptionsTarget: NSObject, NSMenuItemValidation {
     var actionRanAfterDismissal = false
     var allowRecovery = false
 
+    @objc func showRecentVersions() { pad?.showRecentVersions() }
+    @objc func clearVersionHistory() { pad?.clearVersionHistory() }
     @objc func toggleCounts() {
         actionCount += 1
         actionRanAfterDismissal = pad?.isOptionsMenuOpen == false
