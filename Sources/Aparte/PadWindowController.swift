@@ -463,19 +463,27 @@ final class PadWindowController: NSObject, NSTextViewDelegate, NSWindowDelegate 
         guard let liveScroll = editor.enclosingScrollView else { return }
         versionPreviewScroll.frame = liveScroll.frame
         versionPreviewScroll.magnification = zoom
-        let size = versionPreviewScroll.contentView.bounds.size
         versionPreview.textContainerInset = editor.textContainerInset
-        versionPreview.minSize = NSSize(width: 0, height: size.height)
-        versionPreview.maxSize = NSSize(width: size.width, height: .greatestFiniteMagnitude)
-        versionPreview.setFrameSize(NSSize(width: size.width, height: size.height))
-        if let container = versionPreview.textContainer, let manager = versionPreview.layoutManager {
-            container.containerSize = NSSize(
-                width: max(1, size.width - versionPreview.textContainerInset.width * 2),
-                height: .greatestFiniteMagnitude
-            )
-            manager.ensureLayout(for: container)
-            let height = ceil(manager.usedRect(for: container).maxY + versionPreview.textContainerInset.height * 2)
-            versionPreview.setFrameSize(NSSize(width: size.width, height: max(size.height, height)))
+        // Legacy scrollbars consume width when a long preview needs scrolling.
+        // Settle that gutter after sizing the document, then reflow if it changed.
+        // Overlay scrollbars finish in one pass; this never schedules polling.
+        for _ in 0..<3 {
+            versionPreviewScroll.tile()
+            let size = versionPreviewScroll.contentView.bounds.size
+            versionPreview.minSize = NSSize(width: 0, height: size.height)
+            versionPreview.maxSize = NSSize(width: size.width, height: .greatestFiniteMagnitude)
+            versionPreview.setFrameSize(NSSize(width: size.width, height: size.height))
+            if let container = versionPreview.textContainer, let manager = versionPreview.layoutManager {
+                container.containerSize = NSSize(
+                    width: max(1, size.width - versionPreview.textContainerInset.width * 2),
+                    height: .greatestFiniteMagnitude
+                )
+                manager.ensureLayout(for: container)
+                let height = ceil(manager.usedRect(for: container).maxY + versionPreview.textContainerInset.height * 2)
+                versionPreview.setFrameSize(NSSize(width: size.width, height: max(size.height, height)))
+            }
+            versionPreviewScroll.tile()
+            if abs(versionPreviewScroll.contentView.bounds.width - size.width) < 0.5 { break }
         }
         versionPreview.needsDisplay = true
     }

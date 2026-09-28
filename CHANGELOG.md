@@ -2,7 +2,12 @@
 
 All notable changes appear here. The project follows semantic versioning.
 
-## 1.8.0 - 2026-09-28
+## 1.8.1 - 2026-09-28
+
+The first published release of pinning and recent versions. The 1.8.0 release
+check stopped publication after finding a layout issue with always-visible macOS
+scrollbars. This release reflows previews when the scrollbar gutter changes width.
+
 
 - Pin the pad with the icon in the top right to keep it open beside other apps. Move it by the top edge and resize it from the edges. Aparte remembers its position and size, and removes the surrounding dimming while pinned.
 - Move to the left edge to browse recent versions. Hover over a mark to preview it, move away to return to your draft, or click to restore it as the newest version. Restoring protects the current draft and supports Command-Z.

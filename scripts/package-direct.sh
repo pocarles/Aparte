@@ -3,8 +3,8 @@ set -euo pipefail
 
 project_dir="$(cd "$(dirname "$0")/.." && pwd)"
 mode=dry-run
-version="${APARTE_VERSION:-1.8.0}"
-build_number="${APARTE_BUILD_NUMBER:-14}"
+version="${APARTE_VERSION:-1.8.1}"
+build_number="${APARTE_BUILD_NUMBER:-15}"
 output_dir="${APARTE_OUTPUT_DIR:-$project_dir/dist/direct-release}"
 configuration="${CONFIGURATION:-release}"
 identity="${APARTE_SIGN_IDENTITY:-}"

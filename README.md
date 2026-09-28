@@ -11,8 +11,8 @@ local document is waiting when you come back.
 [Download the latest release](https://github.com/pocarles/Aparte/releases/latest/download/Aparte.dmg)
 or read the [product page](https://pocarles.com/aparte/).
 
-Version 1.8.0 adds a pin to keep the pad open beside other apps, with moving and resizing. Move to the left edge to preview and restore earlier versions. Small edits are grouped into fewer steps, and your writing stays on this Mac unless you send it.
-Read the [release notes](https://github.com/pocarles/Aparte/releases/tag/v1.8.0).
+Version 1.8.1 adds a pin to keep the pad open beside other apps, with moving and resizing. Move to the left edge to preview and restore earlier versions. Small edits are grouped into fewer steps, and your writing stays on this Mac unless you send it.
+Read the [release notes](https://github.com/pocarles/Aparte/releases/tag/v1.8.1).
 
 ## What it does
 
